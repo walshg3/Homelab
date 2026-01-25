@@ -15,10 +15,10 @@ services:
       - TZ=${TZ}
       - KOMETA_CONFIG=/config/config.yml #optional
       # - KOMETA_TIME=03:00 #optional
-      - KOMETA_RUN=True #optional
+      # - KOMETA_RUN=True #optional
       - KOMETA_TEST=False #optional
       - KOMETA_NO_MISSING=False #optional
-      # - KOMETA_TIMES=06:00,18:00
+      - KOMETA_TIMES=01:00|02:00|03:00|04:00|05:00|06:00|07:00|08:00|09:00|10:00|11:00|12:00|13:00|14:00|15:00|16:00|17:00|18:00|19:00|20:00|21:00|22:00|23:00|00:00 #optional
     volumes:
       - ${BASE_PATH}/config:/config
       - /home/port/stacks/posterizarr/assets:/assets
