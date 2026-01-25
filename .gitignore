@@ -19,3 +19,6 @@
 !kometa/config/overlays/**
 !kometa/config/fonts/
 !kometa/config/fonts/**
+
+# Whitelist documentation
+!README.md
