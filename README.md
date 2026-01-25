@@ -44,6 +44,13 @@ This repository uses a strict whitelist approach to ensure no sensitive informat
 - **Environment Variables**: All sensitive data (passwords, API keys, IPs) are referenced via environment variables (`${VAR}`).
 - **Examples**: `.env.example` files are provided in each directory to show required variables without exposing actual secrets.
 
+### Cloudflare Zero Trust & Tunnels
+This setup leverages **Cloudflare Tunnels** (via the `cloudflared` container) to expose specific services to the internet securely.
+- **No Open Ports**: Services are exposed without opening inbound ports on the router firewall.
+- **Access Policies**: All exposed subdomains are protected behind Cloudflare Zero Trust Access groups.
+  - **Identity Verification**: Users must authenticate (e.g., via Email OTP, Google/GitHub OAuth) before they can reach the application.
+  - **Granular Control**: Specific users are whitelisted for sensitive services (like Radarr/Sonarr), while broader access might be granted for request tools (Overseerr).
+
 ## Getting Started
 
 1. **Clone the repository:**
