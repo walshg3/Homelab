@@ -1,0 +1,25 @@
+volumes:
+  storage-share:
+    driver_opts:
+      type: cifs
+      o: user=${SMB_USER},password=${SMB_PASSWORD},file_mode=0755,dir_mode=0755,rw,uid=1000,gid=1000
+      device: //${SMB_SERVER_IP}/storage-share
+services:
+  #kometa - used to create collections in plex. Example: "Most Popular Movies This Week", "Best of horror", etc.
+  kometa:
+    image: lscr.io/linuxserver/kometa:latest
+    container_name: kometa
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${USER_ID}
+      - TZ=${TZ}
+      - KOMETA_CONFIG=/config/config.yml #optional
+      # - KOMETA_TIME=03:00 #optional
+      - KOMETA_RUN=True #optional
+      - KOMETA_TEST=False #optional
+      - KOMETA_NO_MISSING=False #optional
+      # - KOMETA_TIMES=06:00,18:00
+    volumes:
+      - ${BASE_PATH}/config:/config
+      - /home/port/stacks/posterizarr/assets:/assets
+    restart: unless-stopped

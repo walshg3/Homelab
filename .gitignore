@@ -1,0 +1,21 @@
+# Ignore everything by default
+*
+
+# Recursively allow directories so we can find whitelisted files inside them
+!*/
+
+# Whitelist files we want everywhere
+!compose.yaml
+!compose.yml
+!.env.example
+!.gitignore
+
+# Whitelist specific Kometa config files
+!kometa/config/overlay_movies.yml
+!kometa/config/overlay_tv.yml
+
+# Whitelist specific Kometa config folders
+!kometa/config/overlays/
+!kometa/config/overlays/**
+!kometa/config/fonts/
+!kometa/config/fonts/**

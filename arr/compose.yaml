@@ -1,0 +1,77 @@
+volumes:
+  storage-share:
+    driver_opts:
+      type: cifs
+      o: user=${SMB_USER},password=${SMB_PASSWORD},file_mode=0755,dir_mode=0755,rw,uid=1000,gid=1000
+      device: //${SMB_SERVER_IP}/storage-share
+services:
+  radarr:
+      image: linuxserver/radarr:latest
+      container_name: radarr
+      environment:
+        - PUID=${USER_ID}
+        - PGID=${USER_ID}
+        - TZ=${TZ}
+      volumes:
+        - ${BASE_PATH}/radarr/config:/config # On SSD
+        # - ${SMB_SHARE_PATH}:/share #Access to the entire share
+        - storage-share:/share # Access to the entire share
+      ports:
+        - 7878:7878
+      restart: unless-stopped
+
+  sonarr:
+      image: linuxserver/sonarr:latest
+      container_name: sonarr
+      environment:
+        - PUID=${USER_ID}
+        - PGID=${USER_ID}
+        - TZ=${TZ}
+      volumes:
+        - ${BASE_PATH}/sonarr/config:/config
+        - storage-share:/share #Access to the entire share
+      ports:
+        - 8989:8989
+      restart: unless-stopped
+
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd:latest
+    container_name: sabnzbd
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${USER_ID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_PATH}/sabnzbd/config:/config
+      - storage-share:/share #Access to the entire share
+    ports:
+      - 8080:8080
+    restart: unless-stopped
+
+  prowlarr:
+    image: linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${USER_ID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_PATH}/prowlarr/config:/config
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+
+ #Bazarr - for subtitles. Try to use SRT format if you can rather than PGS due to performance issues
+  bazarr:
+    container_name: bazarr
+    image: lscr.io/linuxserver/bazarr:latest
+    restart: unless-stopped
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${USER_ID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_PATH}/bazarr/config:/config
+      - storage-share:/share #Access to the entire share
+    ports:
+      - 6767:6767
