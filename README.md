@@ -17,6 +17,7 @@ Services exposed to end-users for interaction and requests.
 - **Overseerr**: Request management and media discovery tool.
 - **Homarr**: A sleek, modern dashboard for your applications.
 - **Wizarr**: Advanced user invitation and management system for Plex/Jellyfin.
+- **Dozzle**: Real-time log viewer for Docker containers.
 
 ### Cloudflare (`/cloudflare`)
 Secure tunnel connector to expose services to the internet without opening ports.
