@@ -18,6 +18,10 @@ Services exposed to end-users for interaction and requests.
 - **Homarr**: A sleek, modern dashboard for your applications.
 - **Wizarr**: Advanced user invitation and management system for Plex/Jellyfin.
 
+### Cloudflare (`/cloudflare`)
+Secure tunnel connector to expose services to the internet without opening ports.
+- **Cloudflared**: The tunnel daemon connecting to Cloudflare Zero Trust.
+
 ### Kometa (`/kometa`)
 *Formerly Plex Meta Manager*
 Automated metadata managing, collections, and overlays for Plex.
