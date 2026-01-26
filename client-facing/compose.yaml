@@ -22,13 +22,17 @@ services:
 
   homarr:
     container_name: homarr
-    image: ghcr.io/ajnart/homarr:latest
+    image: ghcr.io/homarr-labs/homarr:latest
     restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      - SECRET_ENCRYPTION_KEY=${HOMARR_SECRET_ENCRYPTION_KEY} # Optional, only if you want to set a custom encryption key
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # Optional, only if you want docker integration
       - ${BASE_PATH}/homarr/configs:/app/data/configs
       - ${BASE_PATH}/homarr/icons:/app/public/icons
       - ${BASE_PATH}/homarr/data:/data
+
     ports:
       - '7575:7575'
 
