@@ -1,0 +1,14 @@
+services:
+  framerr:
+    image: pickels23/framerr:latest
+    container_name: framerr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY:?required}
+    volumes:
+      - ./config:/config
+    ports:
+      - 3002:3001
+    restart: unless-stopped

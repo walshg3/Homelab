@@ -16,6 +16,8 @@ services:
     image: ghcr.io/fscorrupt/posterizarr:latest
     restart: unless-stopped
     user: 1000:1000
+    ports:
+      - "8001:8000"
     volumes:
       - ${BASE_PATH}/posterizarr:/config
       - ${BASE_PATH}/posterizarr/assets:/assets

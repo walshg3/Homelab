@@ -10,6 +10,19 @@
 !.env.example
 !.gitignore
 
+# Keep live runtime, data, dependency, and secret paths opaque
+**/.env
+**/node_modules/
+**/volumes/
+**/pgdata/
+**/data/
+**/cache/
+**/.cache/
+**/downloads/
+
+# Keep the nested Unpoller checkout independent from this repository
+/unpoller-unifi/
+
 # Whitelist specific Kometa config files
 !kometa/config/overlay_movies.yml
 !kometa/config/overlay_tv.yml
@@ -22,3 +35,8 @@
 
 # Whitelist documentation
 !README.md
+
+# Generated and local-only Kometa poster assets
+/kometa/config/overlays/temp.jpg
+/kometa/config/overlays/Movies-Sand-Hills Original Posters/
+/kometa/config/overlays/TV-Sand-Hills Original Posters/

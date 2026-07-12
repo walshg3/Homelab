@@ -1,0 +1,36 @@
+volumes:
+  storage-share:
+    driver_opts:
+      type: cifs
+      o: user=${SMB_USER},password=${SMB_PASSWORD},file_mode=0755,dir_mode=0755,rw,uid=1000,gid=1000
+      device: //${SMB_SERVER_IP}/storage-share
+services:
+  shelfmark:
+    image: ghcr.io/calibrain/shelfmark:latest
+    container_name: shelfmark
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+    ports:
+      - 8084:8084
+    restart: unless-stopped
+    volumes:
+      - storage-share:/storage-share:rw
+      # Uncomment when you want to get Calibre-web-automated working
+      # - type: volume
+      #   source: storage-share
+      #   target: /books
+      #   volume:
+      #     subpath: media/ingest # Default destination for book downloads
+      - type: volume
+        source: storage-share
+        target: /books
+        volume:
+          subpath: media/audiobooks # Default destination for book downloads
+      - ./config:/config # App configuration
+      # Required for torrent / usenet - path must match your download client's volume exactly
+      - type: volume
+        source: storage-share
+        target: /downloads
+        volume:
+          subpath: usenet
