@@ -1,0 +1,19 @@
+volumes:
+  storage-share:
+    driver_opts:
+      type: cifs
+      o: user=${SMB_USER},password=${SMB_PASSWORD},file_mode=0755,dir_mode=0755,rw,uid=1000,gid=1000
+      device: //${SMB_SERVER_IP}/storage-share
+
+services:
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    ports:
+      - 13378:80
+    volumes:
+      - storage-share:/share:rw
+      # - </path/to/podcasts>:/podcasts
+      - ${BASE_PATH}/audiobookshelf/config:/config
+      - ${BASE_PATH}/audiobookshelf/metadata:/metadata
+    environment:
+      - TZ=${TZ}

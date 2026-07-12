@@ -1,0 +1,26 @@
+volumes:
+  storage-share:
+    driver_opts:
+      type: cifs
+      o: user=${SMB_USER},password=${SMB_PASSWORD},file_mode=0755,dir_mode=0755,rw,uid=1000,gid=1000
+      device: //${SMB_SERVER_IP}/storage-share
+services:
+  readmeabook:
+    image: ghcr.io/kikootwo/readmeabook:latest
+    container_name: readmeabook
+    restart: unless-stopped
+    ports:
+      - "3030:3030"
+    volumes:
+      - ./config:/app/config
+      - ./cache:/app/cache
+      - ./downloads:/downloads        # Your download client's path
+      - ./media:/media
+      - storage-share:/share:rw                # Your audiobook library
+      - ./pgdata:/var/lib/postgresql/data
+      - ./redis:/var/lib/redis
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${USER_ID}                    # Optional: your group ID
+      - PUBLIC_URL="https://bookrequests.walshit.com"  # Required for OAuth
+# Barber-Activism2-Magenta

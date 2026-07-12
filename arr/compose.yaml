@@ -43,7 +43,7 @@ services:
       - TZ=${TZ}
     volumes:
       - ${BASE_PATH}/sabnzbd/config:/config
-      - storage-share:/share #Access to the entire share
+      - storage-share:/share:rw #Access to the entire share
     ports:
       - 8080:8080
     restart: unless-stopped
