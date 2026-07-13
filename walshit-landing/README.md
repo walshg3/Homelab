@@ -4,14 +4,49 @@ Production-ready static landing page served by unprivileged Nginx. The approved 
 
 ## Local validation
 
-Run the repository checks from its root:
+Run the portable source checks from this directory:
 
 ```sh
-python3 -m unittest -v
+python3 - <<'PY'
+from pathlib import Path
+
+required = {
+    "Dockerfile",
+    "compose.yaml",
+    "nginx.conf",
+    "site/index.html",
+    "site/styles.css",
+    "site/app.js",
+    "site/healthz.txt",
+}
+missing = sorted(path for path in required if not Path(path).is_file())
+assert not missing, f"missing required files: {missing}"
+
+html = Path("site/index.html").read_text()
+assert Path("site/healthz.txt").read_text().strip() == "walshit-landing-ok"
+assert "Bad name." in html
+assert 'href="styles.css"' in html
+assert 'src="app.js"' in html
+for url in (
+    "https://app.plex.tv/desktop/",
+    "https://home.walshit.com",
+    "https://requests.walshit.com",
+    "https://books.walshit.com",
+):
+    assert url in html, f"missing canonical link: {url}"
+print("static source validation passed")
+PY
+
 git diff --check
 ```
 
-The runtime image is intentionally pinned for `linux/amd64`. An operator with a Docker daemon may separately validate the Compose model and build in the deployment environment. This repository workflow does not require network access, live credentials, or a running container.
+On the deployment host, also validate the rendered Compose model:
+
+```sh
+docker compose config --quiet
+```
+
+The runtime image is intentionally pinned for `linux/amd64`. Building and runtime verification still require a Docker daemon in the deployment environment. The portable source checks require no network access, live credentials, or a running container.
 
 ## Deployment boundary
 
