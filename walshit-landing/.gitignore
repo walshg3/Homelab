@@ -1,0 +1,25 @@
+# Local configuration and secrets
+.env
+.env.*
+
+# Databases and logs
+*.db
+*.sqlite*
+*.log
+
+# Python/runtime artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# Build output
+dist/
+build/
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f2ead9">
+  <title>Walshit — Movies, shows, and audiobooks, privately</title>
+  <meta name="description" content="Walshit is a small private media library shared with friends and family. Watch on Plex, browse in Framerr, request in Seerr, listen on Audiobookshelf.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to main content</a>
+  <header class="shell">
+    <a class="brand" href="#main" aria-label="Walshit home">WAL<span class="slash">/</span>SHIT <small>Movies, shows<br>and audiobooks</small></a>
+    <nav aria-label="Primary navigation">
+      <a href="#program">Where to go</a>
+      <button class="text-button help-trigger" type="button">Setup &amp; help</button>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero shell" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="kicker">Movies · Series · Audiobooks</p>
+        <h1 id="hero-title">Bad name.<br><em>Good shelf.</em></h1>
+        <p class="dek">A private media library for friends and family. Watch on Plex, see what’s here in Framerr, ask for whatever’s missing in Seerr, and put on an audiobook when your hands are busy.</p>
+        <div class="actions" aria-label="Main destinations">
+          <a class="button" href="https://app.plex.tv/desktop/">Watch on Plex</a>
+          <a class="button secondary" href="https://home.walshit.com">Open Framerr</a>
+        </div>
+        <p class="fine-print">Already set up? Pick a door. New here? <button class="text-button help-trigger" type="button">Read the setup guide.</button></p>
+      </div>
+
+      <aside class="bill" aria-label="What’s playing">
+        <div class="ticket">
+          <div class="ticket-top">
+            <span class="ticket-label">Now showing</span>
+            <span class="ticket-label ticket-status">Open now</span>
+          </div>
+          <h2>Whatever<br>you like.</h2>
+          <p>Films, series, audiobooks, and the occasional very specific request. Nothing starts at eight, so there’s nothing to be late for.</p>
+          <div class="ticket-meta">
+            <div><span class="ticket-label">Admit</span><strong>Friends + family</strong></div>
+            <div><span class="ticket-label">House rule</span><strong>Keep your login yours</strong></div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="manifesto shell" aria-labelledby="about-title">
+      <div class="section-label">
+        <span class="section-number">01</span>
+        <h2 id="about-title">The short version</h2>
+      </div>
+      <div class="manifesto-copy">
+        <blockquote>No ads. No algorithm. Nothing autoplaying <em>something you didn’t ask for.</em></blockquote>
+        <p>Your invite gets you into Plex and the tools around it: Framerr to browse the collection, Seerr to ask for something that isn’t in it, Audiobookshelf to listen (that one may want a login of its own). It’s a home setup rather than a company, so things get added, tidied, and occasionally rearranged—but nothing here is trying to keep you watching.</p>
+      </div>
+    </section>
+
+    <section class="program shell" id="program" aria-labelledby="program-title">
+      <div class="program-head">
+        <div>
+          <p class="kicker">Four doors, one library</p>
+          <h2 id="program-title">Where to go</h2>
+        </div>
+        <p>All four run on the same setup. Sign in with the account tied to your invite; Audiobookshelf may want its own login.</p>
+      </div>
+      <div class="list">
+        <a class="service" href="https://app.plex.tv/desktop/">
+          <span class="num">01</span><h3>Plex</h3><p>Movies and television. Start here when it’s time to watch something.</p><span class="go" aria-hidden="true">↗</span>
+        </a>
+        <a class="service" href="https://home.walshit.com">
+          <span class="num">02</span><h3>Framerr</h3><p>Browse the shelves and see what’s already here before you ask.</p><span class="go" aria-hidden="true">↗</span>
+        </a>
+        <a class="service" href="https://requests.walshit.com">
+          <span class="num">03</span><h3>Seerr</h3><p>Not here yet? Put in a request for a film or a series.</p><span class="go" aria-hidden="true">↗</span>
+        </a>
+        <a class="service" href="https://books.walshit.com">
+          <span class="num">04</span><h3>Audiobookshelf</h3><p>Audiobooks for the car, the kitchen, and the last hour of the day.</p><span class="go" aria-hidden="true">↗</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="invite shell" aria-labelledby="invite-title">
+      <div class="invite-art" aria-hidden="true">
+        <div class="seal"><span>W<small>Admit one</small></span></div>
+      </div>
+      <div class="invite-copy">
+        <p class="kicker">Getting in</p>
+        <h2 id="invite-title">You’re here because somebody likes you.</h2>
+        <p>Walshit stays small on purpose. If someone sent you a link, the setup guide below is all you need. If nobody did, there’s no signup form to fill in—ask the person you’d expect to hear it from.</p>
+        <button class="button help-trigger" type="button">See setup guide</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="shell">
+    <p class="footer-mark">Walshit. Yes, really.</p>
+    <p>Private collection · Please keep your login to yourself</p>
+  </footer>
+
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <div class="dialog-head">
+      <strong>Setup &amp; help</strong>
+      <button class="close" type="button" aria-label="Close setup guide">×</button>
+    </div>
+    <div class="dialog-body">
+      <h2 id="help-title">In before the trailers.</h2>
+      <p>There are no public signups here, so nothing will open until your account has been added. Once your invite arrives, this is the whole process.</p>
+      <ol class="steps">
+        <li><strong>Accept the invite</strong><span>Open the email or message you were sent. It’s tied to you, so don’t pass it on to anyone else.</span></li>
+        <li><strong>Sign in to Plex</strong><span>Use the account the invite was sent to, then accept access to the shared library.</span></li>
+        <li><strong>Browse, then ask</strong><span>Framerr shows what’s on the shelves. If something isn’t there, request it in Seerr.</span></li>
+        <li><strong>Bookmark your doors</strong><span>Save the services you actually use. Audiobookshelf may need a separate login—ask for one.</span></li>
+      </ol>
+      <p class="dialog-note"><strong>Stuck?</strong> Reply to your invite and say which step you got to and what you’re using—phone, TV, laptop. Never send a password or access code to anyone, including us.</p>
+    </div>
+  </dialog>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
