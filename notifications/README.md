@@ -45,7 +45,7 @@ docker compose --env-file notifications/.env -f notifications/compose.yaml up -d
 
 Poll health with a deadline rather than using a blind sleep. Expected services:
 
-- ntfy: `healthy`, host/LAN origin `http://192.168.5.252:8093`
+- ntfy: `healthy`, canonical URL `https://notify.walshit.com`, with direct LAN origin `http://192.168.5.252:8093`
 - Apprise: `healthy`, no host port, internal endpoint `http://apprise:8000/notify`
 
 ## Authentication initialization
@@ -84,6 +84,10 @@ docker compose --env-file notifications/.env -f notifications/compose.yaml stop 
 
 Do not use `docker compose down`, container/network removal, image prune, or delete `data/` without separate explicit removal/data-loss approval.
 
-## Public/mobile phase
+## Public/mobile endpoint
 
-The proposed `notify.walshit.com` Cloudflare Tunnel route is a separate transaction. Capture full prior tunnel and DNS state, prepare the exact rollback payload, and obtain scoped approval immediately before using the retained overprivileged Cloudflare token.
+`https://notify.walshit.com` is routed through the remotely managed `Sand Hills Media` Cloudflare Tunnel to `http://192.168.5.252:8093`. The proxied CNAME points to the tunnel UUID. ntfy authentication remains authoritative; anonymous access is denied.
+
+`NTFY_BEHIND_PROXY` intentionally remains `false`: the origin is also directly reachable on the LAN, and forwarded headers must not be trusted without explicit trusted-proxy restrictions.
+
+Any future route change or rollback must capture the full current tunnel configuration and exact DNS record first, then obtain scoped approval immediately before using the retained overprivileged Cloudflare token.
