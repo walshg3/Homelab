@@ -52,6 +52,9 @@ services:
       - storage-share:/share:rw #Access to the entire share
     ports:
       - 8080:8080
+    networks:
+      - default
+      - notifications
     restart: unless-stopped
 
   prowlarr:
@@ -84,6 +87,9 @@ services:
       - storage-share:/share #Access to the entire share
     ports:
       - 6767:6767
+    networks:
+      - default
+      - notifications
 
 networks:
   notifications:

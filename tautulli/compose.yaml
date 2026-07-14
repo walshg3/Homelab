@@ -17,4 +17,12 @@ services:
       - ${BASE_PATH}/tautulli:/config
     ports:
       - 8181:8181
+    networks:
+      - default
+      - notifications
     restart: unless-stopped
+
+networks:
+  notifications:
+    external: true
+    name: notifications
