@@ -18,6 +18,9 @@ services:
         - storage-share:/share # Access to the entire share
       ports:
         - 7878:7878
+      networks:
+        - default
+        - notifications
       restart: unless-stopped
 
   sonarr:
@@ -32,6 +35,9 @@ services:
         - storage-share:/share #Access to the entire share
       ports:
         - 8989:8989
+      networks:
+        - default
+        - notifications
       restart: unless-stopped
 
   sabnzbd:
@@ -59,6 +65,9 @@ services:
       - ${BASE_PATH}/prowlarr/config:/config
     ports:
       - 9696:9696
+    networks:
+      - default
+      - notifications
     restart: unless-stopped
 
  #Bazarr - for subtitles. Try to use SRT format if you can rather than PGS due to performance issues
@@ -75,3 +84,8 @@ services:
       - storage-share:/share #Access to the entire share
     ports:
       - 6767:6767
+
+networks:
+  notifications:
+    external: true
+    name: notifications
