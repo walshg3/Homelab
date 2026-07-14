@@ -74,6 +74,17 @@ docker port apprise
 
 `docker port apprise` must print nothing.
 
+## Native media integrations
+
+Application-owned notification state is configured at runtime and is not stored in this repository. All integrations below publish to `homelab-ops` through `http://ntfy` with the restricted `media-publisher` token:
+
+- Sonarr: health issue, health restored, and manual interaction required.
+- Radarr: health issue, health restored, and manual interaction required.
+- Prowlarr: health issue and health restored.
+- Seerr: request processing failed and request available (`types=24`); poster embedding is disabled.
+
+Priority is `high` (`4`). Routine grabs, successful downloads/upgrades, approvals, and other success noise remain disabled. After any change, run each application's built-in notification test, verify delivery in ntfy, restart only the affected service, and confirm the settings persist. Never commit application API keys or the ntfy token.
+
 ## Non-destructive rollback
 
 For this new stack, rollback is a pause: disable application destinations and Dozzle rules through their APIs, then stop ntfy and Apprise while leaving their containers, network, images, and state intact. Later phases that modify existing Compose files must capture those files before editing and restore the captured version before recreating only the affected service.
