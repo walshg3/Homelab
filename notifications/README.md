@@ -89,7 +89,7 @@ Batch B:
 
 - Kometa: native ntfy for errors and new-version notices. Routine run-start, run-end, collection-change, and delete events remain disabled.
 - Tautulli: native ntfy for Plex internal/external availability down/up, Tautulli database corruption, and expired Plex tokens. Playback, recently-added, update, and other routine events remain disabled.
-- SABnzbd: built-in Apprise-to-ntfy for failed jobs and disk-full events only. Successful jobs, startup, queue completion, warning, login, quota, and other routine events remain disabled.
+- SABnzbd: built-in Apprise-to-ntfy for disk-full events only. Per-job failures were disabled after live sampling showed that each incomplete Usenet candidate generated an alert even when Sonarr automatically retried and successfully imported the episode. Successful jobs, startup, queue completion, warning, login, quota, and other routine events remain disabled.
 - Bazarr: intentionally not enabled. Its current notification provider emits successful subtitle download/upgrade/upload events and does not provide the requested failure-only filtering.
 
 Failure-focused integrations use high priority where the application supports a fixed priority. After any change, run each application's native notification test, verify delivery in ntfy, restart only the affected service when safe, and confirm settings persist. Never commit application API keys, Apprise URLs containing tokens, or ntfy credentials.
