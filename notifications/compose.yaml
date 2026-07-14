@@ -7,6 +7,7 @@ services:
     environment:
       TZ: ${TZ:-America/New_York}
       NTFY_BASE_URL: ${NTFY_BASE_URL:?required}
+      NTFY_UPSTREAM_BASE_URL: ${NTFY_UPSTREAM_BASE_URL:-}
       NTFY_CACHE_FILE: /var/lib/ntfy/cache.db
       NTFY_CACHE_DURATION: 168h
       NTFY_AUTH_FILE: /var/lib/ntfy/auth.db

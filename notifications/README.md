@@ -101,4 +101,8 @@ Do not use `docker compose down`, container/network removal, image prune, or del
 
 `NTFY_BEHIND_PROXY` intentionally remains `false`: the origin is also directly reachable on the LAN, and forwarded headers must not be trusted without explicit trusted-proxy restrictions.
 
+### Native iOS instant notifications
+
+The native iOS app requires `NTFY_UPSTREAM_BASE_URL=https://ntfy.sh` for reliable instant delivery from a self-hosted server. The iOS Default Server must exactly match `NTFY_BASE_URL` (`https://notify.walshit.com`). ntfy.sh relays the APNS wake-up/poll request; the device retrieves message content from this self-hosted server. This adds an external ntfy.sh/APNS availability and metadata dependency, while application publishers continue to use the private LAN endpoint.
+
 Any future route change or rollback must capture the full current tunnel configuration and exact DNS record first, then obtain scoped approval immediately before using the retained overprivileged Cloudflare token.
