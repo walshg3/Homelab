@@ -87,9 +87,6 @@ services:
       - storage-share:/share #Access to the entire share
     ports:
       - 6767:6767
-    networks:
-      - default
-      - notifications
 
 networks:
   notifications:

@@ -76,14 +76,23 @@ docker port apprise
 
 ## Native media integrations
 
-Application-owned notification state is configured at runtime and is not stored in this repository. All integrations below publish to `homelab-ops` through `http://ntfy` with the restricted `media-publisher` token:
+Application-owned notification state is configured at runtime and is not stored in this repository. Integrations publish to `homelab-ops` through `http://ntfy` with the restricted `media-publisher` token.
+
+Batch A:
 
 - Sonarr: health issue, health restored, and manual interaction required.
 - Radarr: health issue, health restored, and manual interaction required.
 - Prowlarr: health issue and health restored.
 - Seerr: request processing failed and request available (`types=24`); poster embedding is disabled.
 
-Priority is `high` (`4`). Routine grabs, successful downloads/upgrades, approvals, and other success noise remain disabled. After any change, run each application's built-in notification test, verify delivery in ntfy, restart only the affected service, and confirm the settings persist. Never commit application API keys or the ntfy token.
+Batch B:
+
+- Kometa: native ntfy for errors and new-version notices. Routine run-start, run-end, collection-change, and delete events remain disabled.
+- Tautulli: native ntfy for Plex internal/external availability down/up, Tautulli database corruption, and expired Plex tokens. Playback, recently-added, update, and other routine events remain disabled.
+- SABnzbd: built-in Apprise-to-ntfy for failed jobs and disk-full events only. Successful jobs, startup, queue completion, warning, login, quota, and other routine events remain disabled.
+- Bazarr: intentionally not enabled. Its current notification provider emits successful subtitle download/upgrade/upload events and does not provide the requested failure-only filtering.
+
+Failure-focused integrations use high priority where the application supports a fixed priority. After any change, run each application's native notification test, verify delivery in ntfy, restart only the affected service when safe, and confirm settings persist. Never commit application API keys, Apprise URLs containing tokens, or ntfy credentials.
 
 ## Non-destructive rollback
 
