@@ -22,5 +22,11 @@ services:
     volumes:
       - ${BASE_PATH}/config:/config
       - /home/port/stacks/posterizarr/assets:/assets
+    networks:
+      - default
+      - notifications
     restart: unless-stopped
-networks: {}
+networks:
+  notifications:
+    external: true
+    name: notifications
