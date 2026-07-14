@@ -1,0 +1,90 @@
+services:
+  ntfy:
+    image: binwiederhier/ntfy:v2.26.0@sha256:a6d335064ae927c4dbef118e1fa39656b3d2e01472b2a82af5915d5cebfe815f
+    container_name: ntfy
+    command:
+      - serve
+    environment:
+      TZ: ${TZ:-America/New_York}
+      NTFY_BASE_URL: ${NTFY_BASE_URL:?required}
+      NTFY_CACHE_FILE: /var/lib/ntfy/cache.db
+      NTFY_CACHE_DURATION: 168h
+      NTFY_AUTH_FILE: /var/lib/ntfy/auth.db
+      NTFY_AUTH_DEFAULT_ACCESS: deny-all
+      NTFY_ENABLE_LOGIN: "true"
+      # Keep false while the origin is directly reachable on the LAN. Revisit
+      # only with trusted-proxy restrictions during the public routing phase.
+      NTFY_BEHIND_PROXY: ${NTFY_BEHIND_PROXY:-false}
+    user: "${PUID:-1000}:${PGID:-1000}"
+    volumes:
+      - ./data:/var/lib/ntfy
+    ports:
+      - "192.168.5.252:8093:80"
+    networks:
+      notifications:
+        aliases:
+          - ntfy
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q --tries=1 http://127.0.0.1:80/v1/health -O - |
+          grep -Eq '"healthy"[[:space:]]*:[[:space:]]*true'
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  apprise:
+    image: caronc/apprise:v1.5.1@sha256:1871ed736799f6320d5061b72a60507f62c8747026e830175dc4b9f8adbf78dd
+    container_name: apprise
+    environment:
+      TZ: ${TZ:-America/New_York}
+      APPRISE_STATEFUL_MODE: disabled
+      APPRISE_WORKER_COUNT: "1"
+      APPRISE_ADMIN: "n"
+      APPRISE_CONFIG_LOCK: "y"
+      APPRISE_ATTACH_SIZE: "0"
+    user: "${PUID:-1000}:${PGID:-1000}"
+    expose:
+      - "8000"
+    networks:
+      notifications:
+        aliases:
+          - apprise
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+      - /config:rw,noexec,nosuid,nodev,size=8m
+      - /attach:rw,noexec,nosuid,nodev,size=8m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/status', timeout=5).read()
+      interval: 30s
+      timeout: 6s
+      retries: 5
+      start_period: 30s
+
+networks:
+  notifications:
+    name: notifications
+    driver: bridge

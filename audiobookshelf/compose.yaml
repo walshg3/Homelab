@@ -17,3 +17,11 @@ services:
       - ${BASE_PATH}/audiobookshelf/metadata:/metadata
     environment:
       - TZ=${TZ}
+    networks:
+      - default
+      - notifications
+
+networks:
+  notifications:
+    external: true
+    name: notifications

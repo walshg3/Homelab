@@ -64,4 +64,12 @@ services:
       - DOZZLE_REMOTE_AGENT=${DOZZLE_REMOTE_AGENT}:7007
     ports:
       - 8888:8080 # Changed to 8888 to avoid conflict with Sabnzbd on 8080
+    networks:
+      - default
+      - notifications
     restart: unless-stopped
+
+networks:
+  notifications:
+    external: true
+    name: notifications
