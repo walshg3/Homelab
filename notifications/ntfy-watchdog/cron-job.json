@@ -1,0 +1,7 @@
+{
+  "name": "Independent public ntfy watchdog",
+  "schedule": "every 5m",
+  "script": "ntfy_watchdog.py",
+  "no_agent": true,
+  "deliver": "local"
+}
