@@ -1,6 +1,6 @@
 # Homelab Notifications
 
-One user-facing notification inbox (`ntfy`), a private stateless Apprise API bridge for applications such as Audiobookshelf, and a one-way ntfy-to-Discord subscriber bridge.
+One user-facing notification inbox (`ntfy`), a private stateless Apprise API bridge for applications such as Audiobookshelf, a one-way ntfy-to-Discord subscriber bridge, and an independent public-health watchdog that can report ntfy outages directly to Discord.
 
 ## Architecture
 
@@ -26,10 +26,13 @@ The script and container root are read-only. Only `discord-bridge/data/` is writ
 - `discord-bridge/bridge.py` — read-only mounted subscriber implementation.
 - `discord-bridge/.env` — bridge secrets, mode `0600`, not committed.
 - `discord-bridge/data/state.json` — cursor and health state, not committed.
+- `ntfy-watchdog/ntfy_watchdog.py` — independent public health probe deployed on OpenClaw.
+- `ntfy-watchdog/cron-job.json` — exact five-minute Hermes script-only schedule specification.
+- `ntfy-watchdog/README.md` — watchdog thresholds, secret boundary, validation, and rollback.
 
 ## Discord bridge prerequisites and filters
 
-Create a Discord incoming webhook scoped to the single destination channel. Do not use a bot token. In ntfy, create a dedicated access token with subscribe/read-only access to exactly `homelab-critical` and `homelab-ops`; deny publish and all other topics.
+Create a Discord incoming webhook scoped to the Homelab `alerts` channel. Do not use a bot token. In ntfy, create a dedicated access token with subscribe/read-only access to exactly `homelab-critical` and `homelab-ops`; deny publish and all other topics.
 
 The bridge forwards only `homelab-critical` and `homelab-ops` messages with numeric priority 4 or 5. It filters events with an exact `test` or `smoke` tag (case-insensitive), the `homelab-info` topic, attachments, actions, low/invalid priority, and any message containing `[ntfy-discord-bridge-origin]`. A similar marker is included in Discord text for one-way loop prevention. Attachment/action URLs are never requested.
 

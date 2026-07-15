@@ -42,6 +42,15 @@
 !notifications/discord-bridge/bridge.py
 !notifications/discord-bridge/test_bridge.py
 
+# Whitelist the independent public ntfy health watchdog and tests. Its
+# channel-scoped Discord webhook and runtime state remain outside Git.
+!notifications/ntfy-watchdog/
+!notifications/ntfy-watchdog/ntfy_watchdog.py
+!notifications/ntfy-watchdog/test_ntfy_watchdog.py
+!notifications/ntfy-watchdog/README.md
+!notifications/ntfy-watchdog/.env.example
+!notifications/ntfy-watchdog/cron-job.json
+
 # Generated and local-only Kometa poster assets
 /kometa/config/overlays/temp.jpg
 /kometa/config/overlays/Movies-Sand-Hills Original Posters/
