@@ -105,9 +105,6 @@ services:
     secrets:
       - source: discord_bridge_env
         target: discord_bridge_env
-        uid: "1000"
-        gid: "1000"
-        mode: 0400
     user: "1000:1000"
     volumes:
       - ./discord-bridge/bridge.py:/app/bridge.py:ro

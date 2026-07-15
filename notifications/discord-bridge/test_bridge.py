@@ -162,6 +162,18 @@ class DeliveryTests(unittest.TestCase):
 
 
 class CursorTests(unittest.TestCase):
+    def test_open_control_event_does_not_advance_cursor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = bridge.StateStore(Path(directory) / "state.json")
+            state.write("previous-id", "running")
+            handled = bridge.process_event(
+                event(id="open-record-id", event="open"),
+                config(state.path),
+                state,
+            )
+            self.assertFalse(handled)
+            self.assertEqual(state.cursor(), "previous-id")
+
     def test_filtered_event_advances_cursor_without_delivery(self):
         with tempfile.TemporaryDirectory() as directory:
             state = bridge.StateStore(Path(directory) / "state.json")

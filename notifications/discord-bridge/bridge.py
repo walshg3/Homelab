@@ -336,6 +336,10 @@ def process_event(
     state: StateStore,
     deliverer: Callable[[Config, bytes], None] = deliver,
 ) -> bool:
+    # ntfy also emits open/keepalive control records with IDs. Those IDs are
+    # not message replay cursors and must never replace the last message ID.
+    if event.get("event") != "message":
+        return False
     message_id = event.get("id")
     if not isinstance(message_id, str) or not message_id or len(message_id) > 128:
         return False

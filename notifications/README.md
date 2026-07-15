@@ -6,7 +6,7 @@ One user-facing notification inbox (`ntfy`), a private stateless Apprise API bri
 
 Publishers send to authenticated ntfy topics. The Python-stdlib-only `discord-bridge` subscribes inside the private `notifications` Docker network at `http://ntfy`, authenticating with a dedicated read-only ntfy access token. It posts selected messages to one Discord channel-scoped incoming webhook. It has no host port, never fetches attachment or action URLs, and has no Discord bot-token fallback.
 
-The script and container root are read-only. Only `discord-bridge/data/` is writable for its atomic cursor/health state. The subscriber token and webhook URL are read from the Compose secret mount `/run/secrets/discord_bridge_env`, sourced from a mode-`0600` local file, rather than container environment variables.
+The script and container root are read-only. Only `discord-bridge/data/` is writable for its atomic cursor/health state. The subscriber token and webhook URL are read from the Compose secret mount `/run/secrets/discord_bridge_env`, sourced from a mode-`0600`, UID-`1000` local file, rather than container environment variables. Docker Compose bind-mounted secrets do not honor long-syntax `uid`/`gid`/`mode`; verify the effective in-container file remains readable only by the bridge UID instead of relying on those unsupported fields.
 
 ## Security model
 
@@ -35,7 +35,7 @@ The bridge forwards only `homelab-critical` and `homelab-ops` messages with nume
 
 Titles, messages, total Discord content, incoming JSON lines, and persisted error text are bounded. Control characters and common credential forms—including Authorization values, token-like assignments, ntfy tokens, JWT-like strings, and Discord webhook URLs—are redacted. Discord `allowed_mentions.parse` is empty.
 
-On the first start there is no `since` parameter, so only messages arriving after the subscription opens are seen. Afterward, reconnects use the persisted last-seen ntfy message ID. Filtered events and successfully delivered events advance the cursor. A Discord delivery that exhausts bounded retries does not advance it, so reconnect replays that event. This is at-least-once behavior: a crash after Discord accepts a post but before the cursor write can produce a duplicate.
+On the first start there is no `since` parameter, so only messages arriving after the subscription opens are seen. ntfy `open`/`keepalive` control-record IDs never become cursors. Afterward, reconnects use the persisted last-seen message ID. Filtered messages and successfully delivered messages advance the cursor. A Discord delivery that exhausts bounded retries does not advance it, so reconnect replays that event. This is at-least-once behavior: a crash after Discord accepts a post but before the cursor write can produce a duplicate.
 
 ## Preflight
 
