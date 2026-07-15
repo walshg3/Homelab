@@ -36,6 +36,12 @@
 # Whitelist documentation
 !README.md
 
+# Whitelist the reviewed ntfy-to-Discord bridge source and tests. Runtime
+# secrets and state remain covered by the .env and data exclusions above.
+!notifications/discord-bridge/
+!notifications/discord-bridge/bridge.py
+!notifications/discord-bridge/test_bridge.py
+
 # Generated and local-only Kometa poster assets
 /kometa/config/overlays/temp.jpg
 /kometa/config/overlays/Movies-Sand-Hills Original Posters/

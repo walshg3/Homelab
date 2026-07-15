@@ -85,7 +85,58 @@ services:
       retries: 5
       start_period: 30s
 
+  discord-bridge:
+    image: python:3.13-alpine@sha256:399babc8b49529dabfd9c922f2b5eea81d611e4512e3ed250d75bd2e7683f4b0
+    container_name: ntfy-discord-bridge
+    command:
+      - python3
+      - /app/bridge.py
+    environment:
+      TZ: ${TZ:-America/New_York}
+      BRIDGE_NTFY_URL: ${BRIDGE_NTFY_URL:-http://ntfy}
+      BRIDGE_STATE_MAX_AGE_SECONDS: ${BRIDGE_STATE_MAX_AGE_SECONDS:-180}
+      BRIDGE_SUBSCRIBE_TIMEOUT_SECONDS: ${BRIDGE_SUBSCRIBE_TIMEOUT_SECONDS:-75}
+      BRIDGE_RECONNECT_MAX_SECONDS: ${BRIDGE_RECONNECT_MAX_SECONDS:-30}
+      BRIDGE_DISCORD_TIMEOUT_SECONDS: ${BRIDGE_DISCORD_TIMEOUT_SECONDS:-15}
+      BRIDGE_DISCORD_MAX_ATTEMPTS: ${BRIDGE_DISCORD_MAX_ATTEMPTS:-5}
+      BRIDGE_RETRY_MAX_SECONDS: ${BRIDGE_RETRY_MAX_SECONDS:-30}
+      BRIDGE_SECRET_FILE: /run/secrets/discord_bridge_env
+      BRIDGE_STATE_FILE: /data/state.json
+    secrets:
+      - source: discord_bridge_env
+        target: discord_bridge_env
+    user: "1000:1000"
+    volumes:
+      - ./discord-bridge/bridge.py:/app/bridge.py:ro
+      - ./discord-bridge/data:/data
+    networks:
+      - notifications
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 90s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - /app/bridge.py
+        - --healthcheck
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
 networks:
   notifications:
     name: notifications
     driver: bridge
+
+secrets:
+  discord_bridge_env:
+    file: ./discord-bridge/.env
