@@ -10,7 +10,7 @@ It is deliberately independent from ntfy and the ntfy-to-Discord subscriber brid
 
 ## Runtime boundary
 
-The deployed script is copied from reviewed repository source to the active Hermes homelab profile and runs every five minutes as a script-only cron job. `cron-job.json` is the reviewed schedule specification and must match the live Hermes job exactly. Defaults derive from `$HERMES_HOME`:
+The deployed script is copied from reviewed repository source to the active Hermes homelab profile and runs every five minutes as a script-only cron job. `cron-job.json` is the reviewed schedule specification and must match the live Hermes job exactly; its `script` value is intentionally relative to the active profile’s `scripts/` directory, as required by Hermes cron. Defaults derive from `$HERMES_HOME`:
 
 - secret: `secrets/ntfy-watchdog.env`, mode `0600`;
 - state: `runtime/ntfy-watchdog/state.json`, mode `0600` in a mode-`0700` directory;

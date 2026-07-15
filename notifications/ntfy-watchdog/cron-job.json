@@ -1,7 +1,7 @@
 {
   "name": "Independent public ntfy watchdog",
   "schedule": "every 5m",
-  "script": "/home/openclaw/.hermes/profiles/homelab/scripts/ntfy_watchdog.py",
+  "script": "ntfy_watchdog.py",
   "no_agent": true,
   "deliver": "local"
 }
