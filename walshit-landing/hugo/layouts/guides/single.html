@@ -1,0 +1,10 @@
+{{ define "main" }}
+<article class="article shell">
+  <p class="kicker">Guide{{ if .Params.updated }} · Updated {{ (time .Params.updated).Format "January 2, 2006" }}{{ end }}</p>
+  <h1 class="article-title">{{ .Title }}</h1>
+  <div class="article-body">
+    {{ .Content }}
+  </div>
+  <p class="article-back"><a href="{{ "/guides/" | relURL }}">&larr; All guides</a></p>
+</article>
+{{ end }}

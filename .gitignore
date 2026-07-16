@@ -55,3 +55,30 @@
 /kometa/config/overlays/temp.jpg
 /kometa/config/overlays/Movies-Sand-Hills Original Posters/
 /kometa/config/overlays/TV-Sand-Hills Original Posters/
+
+# Whitelist the reviewed Hugo content prototype: source, tests, and its
+# isolated runtime config. The legacy walshit-landing/site/, Dockerfile,
+# nginx.conf, and compose.yaml remain covered by the existing whitelist
+# entries above and are untouched by this prototype.
+!walshit-landing/hugo/
+!walshit-landing/hugo/**
+!walshit-landing/tests/
+!walshit-landing/tests/**
+!walshit-landing/Dockerfile.hugo
+!walshit-landing/Dockerfile.hugo.dockerignore
+!walshit-landing/nginx.hugo.conf
+!walshit-landing/security-headers.conf
+!walshit-landing/compose.hugo.yaml
+!walshit-landing/scripts/
+!walshit-landing/scripts/**
+
+# Keep Hugo build output and Python bytecode caches out of Git even
+# though the directories above are whitelisted.
+walshit-landing/hugo/public/
+walshit-landing/hugo/.hugo_build.lock
+walshit-landing/hugo/hugo_stats.json
+walshit-landing/hugo/resources/_gen/
+walshit-landing/hugo/cache/
+walshit-landing/hugo/.cache/
+**/__pycache__/
+**/*.py[cod]

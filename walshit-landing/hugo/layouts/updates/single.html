@@ -1,0 +1,13 @@
+{{ define "main" }}
+<article class="article shell">
+  <p class="kicker">{{ .Date.Format "January 2, 2006" }}{{ if .Params.updated }} · Updated {{ (time .Params.updated).Format "January 2, 2006" }}{{ end }}</p>
+  <h1 class="article-title">{{ .Title }}</h1>
+  {{ if .Params.affected_services }}
+  <p class="fine-print">Affects: {{ delimit .Params.affected_services ", " }}</p>
+  {{ end }}
+  <div class="article-body">
+    {{ .Content }}
+  </div>
+  <p class="article-back"><a href="{{ "/updates/" | relURL }}">&larr; All updates</a></p>
+</article>
+{{ end }}

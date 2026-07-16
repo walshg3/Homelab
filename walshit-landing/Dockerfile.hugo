@@ -1,0 +1,15 @@
+FROM ghcr.io/gohugoio/hugo:v0.164.0@sha256:f8671f2299e60154536c158bff8ce27f6eef4dddbbfc73bcce66263276ae0f80 AS build
+WORKDIR /src
+COPY hugo/ .
+RUN hugo --minify --gc --cleanDestinationDir --destination /src/public
+
+FROM nginxinc/nginx-unprivileged:1.30.3-alpine@sha256:a0c30a699fa18d7bbdc6faf197742741a1f5e4631066abf18578dc8102b62c5d
+
+COPY nginx.hugo.conf /etc/nginx/nginx.conf
+COPY security-headers.conf /etc/nginx/security-headers.conf
+COPY --from=build /src/public /usr/share/nginx/html
+
+USER 101:101
+EXPOSE 8080
+
+CMD ["nginx", "-g", "daemon off;"]

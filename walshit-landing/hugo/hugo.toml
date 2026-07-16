@@ -1,0 +1,19 @@
+baseURL = "https://walshit.com/"
+locale = "en-US"
+title = "Walshit"
+enableRobotsTXT = false
+disableKinds = ["taxonomy", "term"]
+uglyURLs = false
+
+[outputs]
+  home = ["html"]
+  section = ["html"]
+  page = ["html"]
+
+[params]
+  assetVersion = "20260715-1"
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = false

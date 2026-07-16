@@ -1,0 +1,79 @@
+{{ define "main" }}
+{{ partial "planned-maintenance.html" . }}
+<section class="hero shell" aria-labelledby="hero-title">
+  <div class="hero-copy">
+    <p class="kicker">Movies · Series · Audiobooks</p>
+    <h1 id="hero-title">Bad branding.<br><em>Good viewing.</em></h1>
+    <p class="dek">A private media library for friends and family. Watch with Plex, use Framerr as your home base, request what's missing through Seerr, or settle in with an audiobook.</p>
+    <div class="actions" aria-label="Main destinations">
+      <a class="button" href="https://app.plex.tv/desktop/">Watch on Plex</a>
+      <a class="button secondary" href="https://home.walshit.com">Open Dashboard</a>
+    </div>
+    <p class="fine-print">Already set up? Pick a door. New here? <button class="text-button help-trigger" type="button">Read the setup guide.</button></p>
+  </div>
+
+  <aside class="bill" aria-label="What's playing">
+    <div class="ticket">
+      <div class="ticket-top">
+        <span class="ticket-label">Now showing</span>
+        <span class="ticket-label ticket-status">Open now</span>
+      </div>
+      <h2>Whatever<br>you like.</h2>
+      <p>Films, series, audiobooks, and the occasional very specific request. Nothing starts at eight, so there's nothing to be late for.</p>
+      <div class="ticket-meta">
+        <div><span class="ticket-label">Admit</span><strong>Friends + family</strong></div>
+        <div><span class="ticket-label">House rule</span><strong>One ticket, one person</strong></div>
+      </div>
+    </div>
+  </aside>
+</section>
+
+<section class="manifesto shell" aria-labelledby="about-title">
+  <div class="section-label">
+    <span class="section-number">01</span>
+    <h2 id="about-title">The short version</h2>
+  </div>
+  <div class="manifesto-copy">
+    <blockquote>No ads in the library. No algorithm to please. <em>Nothing designed to keep you watching.</em></blockquote>
+    <p>Once you're invited, Plex is where you watch, Framerr is your home base, Seerr handles requests, and Audiobookshelf is where the books live—it may need a login of its own. It's a home setup rather than a company, so things get added, tidied, and occasionally rearranged.</p>
+  </div>
+</section>
+
+<section class="program shell" id="program" aria-labelledby="program-title">
+  <div class="program-head">
+    <div>
+      <p class="kicker">Four doors, one library</p>
+      <h2 id="program-title">Where to go</h2>
+    </div>
+    <p>Pick the service that matches what you came to do. Audiobookshelf may ask for a separate login.</p>
+  </div>
+  <div class="list">
+    <a class="service" href="https://app.plex.tv/desktop/">
+      <span class="num">01</span><h3>Plex</h3><p>Movies and television. Start here when it's time to watch something.</p><span class="go" aria-hidden="true"></span>
+    </a>
+    <a class="service" href="https://home.walshit.com">
+      <span class="num">02</span><h3>Dashboard</h3><p>Your dashboard for updates, useful shortcuts, and a quick look at what's happening.</p><span class="go" aria-hidden="true"></span>
+    </a>
+    <a class="service" href="https://requests.walshit.com">
+      <span class="num">03</span><h3>Requests</h3><p>Looking for something that isn't here? Request a film or series.</p><span class="go" aria-hidden="true"></span>
+    </a>
+    <a class="service" href="https://books.walshit.com">
+      <span class="num">04</span><h3>Audiobookshelf</h3><p>Audiobooks for the car, the kitchen, and the last hour of the day.</p><span class="go" aria-hidden="true"></span>
+    </a>
+  </div>
+</section>
+
+{{ partial "updates-teaser.html" . }}
+
+<section class="invite shell" aria-labelledby="invite-title">
+  <div class="invite-art" aria-hidden="true">
+    <div class="seal"><img src="{{ "walsh-ticket-crest.png" | relURL }}?v={{ .Site.Params.assetVersion }}" alt="" width="330" height="330"></div>
+  </div>
+  <div class="invite-copy">
+    <p class="kicker">Getting in</p>
+    <h2 id="invite-title">You're here because somebody likes you.</h2>
+    <p>Walshit stays small on purpose. If someone sent you this link, the setup guide below is all you need. If you arrived without an invitation, there's no public signup form. Ask whoever pointed you this way.</p>
+    <button class="button help-trigger" type="button">See setup guide</button>
+  </div>
+</section>
+{{ end }}
