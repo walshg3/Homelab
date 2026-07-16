@@ -1,0 +1,20 @@
+{{ $updates := where site.RegularPages "Section" "updates" }}
+{{ $latest := first 3 (sort $updates "Date" "desc") }}
+{{ with $latest }}
+<section class="program shell" aria-labelledby="updates-teaser-title">
+  <div class="program-head">
+    <div>
+      <p class="kicker">Recently posted</p>
+      <h2 id="updates-teaser-title">Latest updates</h2>
+    </div>
+    <p><a class="text-button" href="{{ "/updates/" | relURL }}">See all updates</a></p>
+  </div>
+  <div class="list">
+    {{ range . }}
+    <a class="service" href="{{ .RelPermalink }}">
+      <span class="num num-date">{{ .Date.Format "Jan 2" }}</span><h3>{{ .Title }}</h3><p>{{ .Params.summary }}</p><span class="go" aria-hidden="true"></span>
+    </a>
+    {{ end }}
+  </div>
+</section>
+{{ end }}

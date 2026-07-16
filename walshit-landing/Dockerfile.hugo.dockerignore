@@ -1,0 +1,14 @@
+**
+!Dockerfile.hugo
+!nginx.hugo.conf
+!security-headers.conf
+!hugo/
+!hugo/**
+
+# Generated/local Hugo state must never enter the image build context.
+hugo/public/
+hugo/.hugo_build.lock
+hugo/hugo_stats.json
+hugo/resources/
+hugo/cache/
+hugo/.cache/

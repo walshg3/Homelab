@@ -1,0 +1,13 @@
+{{ $updates := where site.RegularPages "Section" "updates" }}
+{{ $active := where $updates "Params.status" "in" (slice "planned" "in-progress") }}
+{{ with $active }}
+<section class="maintenance-banner shell" role="status" aria-live="polite" aria-label="Planned maintenance">
+  {{ range . }}
+  <div class="maintenance-item">
+    <span class="ticket-label ticket-status">{{ .Params.status | title }}</span>
+    <a href="{{ .RelPermalink }}"><strong>{{ .Title }}</strong></a>
+    <p>{{ .Params.summary }}</p>
+  </div>
+  {{ end }}
+</section>
+{{ end }}

@@ -1,0 +1,18 @@
+{{ define "main" }}
+<section class="program shell" aria-labelledby="guides-title">
+  <div class="program-head">
+    <div>
+      <p class="kicker">Evergreen how-tos</p>
+      <h2 id="guides-title">Guides</h2>
+    </div>
+    <p>Durable setup and usage guides. No search, just a short list.</p>
+  </div>
+  <div class="list">
+    {{ range $i, $p := (sort (where .Pages "Kind" "page") "Title" "asc") }}
+    <a class="service" href="{{ $p.RelPermalink }}">
+      <span class="num">{{ printf "%02d" (add $i 1) }}</span><h3>{{ $p.Title }}</h3><p>{{ $p.Params.summary }}</p><span class="go" aria-hidden="true"></span>
+    </a>
+    {{ end }}
+  </div>
+</section>
+{{ end }}

@@ -1,0 +1,12 @@
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f2ead9">
+  <title>{{ if .IsHome }}Walshit — Movies, shows, and audiobooks, privately{{ else }}{{ .Title }} — Walshit{{ end }}</title>
+  <meta name="description" content="{{ if .IsHome }}Walshit is a small private media library shared with friends and family. Watch on Plex, use Framerr as your home base, request through Seerr, and listen on Audiobookshelf.{{ else }}{{ .Params.summary }}{{ end }}">
+  <link rel="icon" type="image/png" href="{{ "walsh-ticket-crest.png" | relURL }}?v={{ .Site.Params.assetVersion }}">
+  <link rel="stylesheet" href="{{ "styles.css" | relURL }}?v={{ .Site.Params.assetVersion }}">
+  {{ with .OutputFormats.Get "rss" -}}
+  <link rel="alternate" type="application/rss+xml" title="{{ $.Site.Title }} — {{ $.Title }}" href="{{ .Permalink }}">
+  {{- end }}
+</head>

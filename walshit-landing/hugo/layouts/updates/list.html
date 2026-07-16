@@ -1,0 +1,19 @@
+{{ define "main" }}
+<section class="program shell" aria-labelledby="updates-title">
+  <div class="program-head">
+    <div>
+      <p class="kicker">Planned maintenance &amp; service updates</p>
+      <h2 id="updates-title">Updates</h2>
+    </div>
+    <p>Reverse-chronological. Active incidents are posted to ntfy/Discord and Framerr status, not here.
+      {{ with .OutputFormats.Get "rss" }} <a href="{{ .RelPermalink }}">RSS</a>{{ end }}</p>
+  </div>
+  <div class="list">
+    {{ range (where .Pages "Kind" "page") }}
+    <a class="service" href="{{ .RelPermalink }}">
+      <span class="num num-date">{{ .Date.Format "2006-01-02" }}</span><h3>{{ .Title }}</h3><p>{{ .Params.summary }}</p><span class="go" aria-hidden="true"></span>
+    </a>
+    {{ end }}
+  </div>
+</section>
+{{ end }}
