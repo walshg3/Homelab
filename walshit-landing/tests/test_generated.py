@@ -92,8 +92,12 @@ class GeneratedSiteTest(unittest.TestCase):
             generated = page.read_text()
             self.assertEqual(generated.count("https://buymeacoffee.com/gregwalsh"), 1, page)
             self.assertIn("Buy me a Coffee", generated, page)
-            self.assertIn("buy-me-a-coffee-logo.png?v=20260718-2", generated, page)
+            self.assertIn("buy-me-a-coffee-logo.png?v=20260718-3", generated, page)
             self.assertNotIn("Buy Greg", generated, page)
+            self.assertLess(generated.index("help-trigger"), generated.index("coffee-nav"), page)
+            self.assertIn('class="text-button nav-toggle"', generated, page)
+            self.assertRegex(generated, r'aria-controls=["\']?primary-navigation["\']?', page)
+            self.assertRegex(generated, r'id=["\']?primary-navigation["\']?', page)
 
 
 if __name__ == "__main__":

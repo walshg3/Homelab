@@ -81,7 +81,7 @@ class FundingIntegrationTest(unittest.TestCase):
         self.assertIn("Buy me a Coffee", header)
         self.assertNotIn("Buy Greg", header)
         self.assertIn('src="{{ "buy-me-a-coffee-logo.png" | relURL }}?v={{ .Site.Params.assetVersion }}"', header)
-        self.assertLess(header.index("coffee-nav"), header.index("help-trigger"))
+        self.assertLess(header.index("help-trigger"), header.index("coffee-nav"))
         self.assertNotIn("buymeacoffee.com", footer)
         self.assertNotIn("coffee-link", footer)
         self.assertNotIn("<script", header)
@@ -99,18 +99,38 @@ class FundingIntegrationTest(unittest.TestCase):
 
     def test_header_support_css_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260718-2"', config)
+        self.assertIn('assetVersion = "20260718-3"', config)
 
     def test_header_support_label_preserves_requested_case(self):
         css = (HUGO / "static" / "styles.css").read_text()
         self.assertRegex(css, r"nav a\.coffee-nav\s*\{[^}]*text-transform:\s*none")
 
-    def test_header_collapses_regular_links_before_tablet_overlap(self):
+    def test_header_uses_a_complete_accessible_responsive_disclosure(self):
+        header = (HUGO / "layouts" / "partials" / "header.html").read_text()
         css = (HUGO / "static" / "styles.css").read_text()
-        self.assertRegex(
-            css,
-            r"@media \(max-width: 1100px\)\s*\{[^}]*nav > a:not\(\.coffee-nav\)",
-        )
+        script = (HUGO / "static" / "app.js").read_text()
+        self.assertIn('class="text-button nav-toggle"', header)
+        self.assertIn('aria-controls="primary-navigation"', header)
+        self.assertIn('aria-expanded="false"', header)
+        self.assertIn('id="primary-navigation"', header)
+        self.assertIn("@media (max-width: 1024px)", css)
+        self.assertNotIn("@media (max-width: 1100px)", css)
+        self.assertNotIn("nav > a:not(.coffee-nav) { display: none; }", css)
+        self.assertNotRegex(css, r"\.coffee-label\s*\{[^}]*clip:")
+        for marker in ('matchMedia("(max-width: 1024px)")', 'aria-expanded', ".hidden", 'Escape', ".focus()"):
+            self.assertIn(marker, script)
+
+    def test_header_support_control_is_compact_and_flat(self):
+        css = (HUGO / "static" / "styles.css").read_text()
+        match = re.search(r"nav a\.coffee-nav\s*\{(?P<body>[^}]*)\}", css)
+        self.assertIsNotNone(match)
+        assert match is not None
+        rule = match.group("body")
+        self.assertNotIn("background:", rule)
+        self.assertNotIn("box-shadow:", rule)
+        self.assertNotRegex(rule, r"(?:^|;)\s*border:")
+        self.assertIn("padding-inline: .6rem", rule)
+        self.assertNotRegex(css, r"nav a\.coffee-nav:hover\s*\{[^}]*(?:transform|box-shadow)")
 
 
 def _all_content_files():
