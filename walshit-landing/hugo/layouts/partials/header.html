@@ -1,10 +1,11 @@
 <header class="shell">
   <a class="brand" href="{{ "/" | relURL }}" aria-label="Walshit home">WAL<span class="slash">/</span>SHIT <small>Movies, shows<br>and audiobooks</small></a>
-  <nav aria-label="Primary navigation">
+  <button class="text-button nav-toggle" type="button" aria-expanded="false" aria-controls="primary-navigation">Menu</button>
+  <nav id="primary-navigation" aria-label="Primary navigation">
     <a href="{{ "/" | relURL }}#program">Where to go</a>
     <a href="{{ "/updates/" | relURL }}">Updates</a>
     <a href="{{ "/guides/" | relURL }}">Guides</a>
-    <a class="coffee-nav" href="https://buymeacoffee.com/gregwalsh" rel="noopener noreferrer" aria-label="Buy me a Coffee"><img src="{{ "buy-me-a-coffee-logo.png" | relURL }}?v={{ .Site.Params.assetVersion }}" alt="" width="14" height="20"><span class="coffee-label">Buy me a Coffee</span></a>
     <button class="text-button help-trigger" type="button">Setup &amp; help</button>
+    <a class="coffee-nav" href="https://buymeacoffee.com/gregwalsh" rel="noopener noreferrer" aria-label="Buy me a Coffee"><img src="{{ "buy-me-a-coffee-logo.png" | relURL }}?v={{ .Site.Params.assetVersion }}" alt="" width="12" height="17"><span class="coffee-label">Buy me a Coffee</span></a>
   </nav>
 </header>
