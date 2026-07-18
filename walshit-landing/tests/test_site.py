@@ -38,6 +38,7 @@ REQUIRED_STRUCTURE_FILES = [
     "static/styles.css",
     "static/app.js",
     "static/walsh-ticket-crest.png",
+    "static/buy-me-a-coffee-logo.png",
 ]
 
 REQUIRED_FRONTMATTER_FIELDS = {"title", "summary", "slug", "date"}
@@ -70,26 +71,46 @@ class FundingIntegrationTest(unittest.TestCase):
         root_ignore = (REPO_ROOT / ".gitignore").read_text()
         self.assertIn("!.github/FUNDING.yml", root_ignore)
 
-    def test_site_uses_a_static_first_party_styled_support_link(self):
+    def test_site_uses_a_header_support_control_with_local_logo(self):
+        header = (HUGO / "layouts" / "partials" / "header.html").read_text()
         footer = (HUGO / "layouts" / "partials" / "footer.html").read_text()
-        self.assertIn('href="https://buymeacoffee.com/gregwalsh"', footer)
-        self.assertIn('class="coffee-link"', footer)
-        self.assertIn('rel="noopener noreferrer"', footer)
-        self.assertIn("Buy Greg a coffee", footer)
-        self.assertNotIn("<script", footer)
-        self.assertNotIn("<img", footer)
-        self.assertNotIn("button-api", footer)
-        self.assertNotIn("cdn.buymeacoffee.com", footer)
+        self.assertIn('href="https://buymeacoffee.com/gregwalsh"', header)
+        self.assertIn('class="coffee-nav"', header)
+        self.assertIn('rel="noopener noreferrer"', header)
+        self.assertIn('aria-label="Buy me a Coffee"', header)
+        self.assertIn("Buy me a Coffee", header)
+        self.assertNotIn("Buy Greg", header)
+        self.assertIn('src="{{ "buy-me-a-coffee-logo.png" | relURL }}?v={{ .Site.Params.assetVersion }}"', header)
+        self.assertLess(header.index("coffee-nav"), header.index("help-trigger"))
+        self.assertNotIn("buymeacoffee.com", footer)
+        self.assertNotIn("coffee-link", footer)
+        self.assertNotIn("<script", header)
+        self.assertNotIn("button-api", header)
+        self.assertNotIn("cdn.buymeacoffee.com", header)
 
         css = (HUGO / "static" / "styles.css").read_text()
-        self.assertIn(".coffee-link", css)
+        self.assertIn(".coffee-nav", css)
+        self.assertIn(".coffee-label", css)
+        self.assertNotIn(".coffee-link", css)
 
         validator = (ROOT / "scripts" / "validate_generated.py").read_text()
         self.assertIn('"buymeacoffee.com"', validator)
+        self.assertIn('"buy-me-a-coffee-logo.png"', validator)
 
-    def test_support_link_css_uses_a_new_asset_version(self):
+    def test_header_support_css_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260718-1"', config)
+        self.assertIn('assetVersion = "20260718-2"', config)
+
+    def test_header_support_label_preserves_requested_case(self):
+        css = (HUGO / "static" / "styles.css").read_text()
+        self.assertRegex(css, r"nav a\.coffee-nav\s*\{[^}]*text-transform:\s*none")
+
+    def test_header_collapses_regular_links_before_tablet_overlap(self):
+        css = (HUGO / "static" / "styles.css").read_text()
+        self.assertRegex(
+            css,
+            r"@media \(max-width: 1100px\)\s*\{[^}]*nav > a:not\(\.coffee-nav\)",
+        )
 
 
 def _all_content_files():

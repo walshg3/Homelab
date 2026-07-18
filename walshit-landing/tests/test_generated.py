@@ -85,6 +85,16 @@ class GeneratedSiteTest(unittest.TestCase):
         self.assertIn("https://status.walshit.com", generated)
         self.assertNotIn("ntfy/Discord and Framerr status", generated)
 
+    def test_header_support_control_is_generated_on_every_page(self):
+        pages = sorted(self.public.rglob("*.html"))
+        self.assertTrue(pages)
+        for page in pages:
+            generated = page.read_text()
+            self.assertEqual(generated.count("https://buymeacoffee.com/gregwalsh"), 1, page)
+            self.assertIn("Buy me a Coffee", generated, page)
+            self.assertIn("buy-me-a-coffee-logo.png?v=20260718-2", generated, page)
+            self.assertNotIn("Buy Greg", generated, page)
+
 
 if __name__ == "__main__":
     unittest.main()
