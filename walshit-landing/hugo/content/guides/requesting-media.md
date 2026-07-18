@@ -30,5 +30,4 @@ back on Seerr or the [dashboard](https://home.walshit.com) if you're
 curious about status.
 
 Audiobook requests aren't handled through Seerr. If you're missing a
-title on [Audiobookshelf](https://books.walshit.com), ask whoever
-invited you directly.
+title on [Books](https://books.walshit.com), checkout [Book Requests](https://bookrequests.walshit.com)

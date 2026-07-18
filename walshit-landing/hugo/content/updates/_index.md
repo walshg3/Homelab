@@ -5,5 +5,4 @@ outputs = ["html", "rss"]
 +++
 
 Reverse-chronological updates about planned maintenance and service changes.
-Active incidents are posted to ntfy/Discord and Framerr status first — this
-page is for planned, scheduled, and after-the-fact notes.
+Active incidents are posted to [status.walshit.com](https://status.walshit.com).
