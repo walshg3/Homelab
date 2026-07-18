@@ -18,6 +18,7 @@ REQUIRED_FILES = {
     "app.js",
     "healthz.txt",
     "walsh-ticket-crest.png",
+    "buy-me-a-coffee-logo.png",
     "updates/index.html",
     "updates/index.xml",
     "updates/welcome-to-updates/index.html",
