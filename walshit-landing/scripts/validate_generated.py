@@ -30,6 +30,9 @@ ALLOWED_EXTERNAL_ANCHOR_HOSTS = {
     "home.walshit.com",
     "requests.walshit.com",
     "books.walshit.com",
+    "bookrequests.walshit.com",
+    "status.walshit.com",
+    "buymeacoffee.com",
 }
 EXPECTED_PUBLIC_SCHEME = "https"
 EXPECTED_PUBLIC_HOST = "walshit.com"
