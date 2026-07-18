@@ -5,8 +5,10 @@
       <p class="kicker">Planned maintenance &amp; service updates</p>
       <h2 id="updates-title">Updates</h2>
     </div>
-    <p>Reverse-chronological. Active incidents are posted to ntfy/Discord and Framerr status, not here.
-      {{ with .OutputFormats.Get "rss" }} <a href="{{ .RelPermalink }}">RSS</a>{{ end }}</p>
+    <div class="program-intro">
+      {{ .Content }}
+      {{ with .OutputFormats.Get "rss" }}<a href="{{ .RelPermalink }}">RSS</a>{{ end }}
+    </div>
   </div>
   <div class="list">
     {{ range (where .Pages "Kind" "page") }}

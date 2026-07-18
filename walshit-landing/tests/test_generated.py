@@ -79,6 +79,12 @@ class GeneratedSiteTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("generated output validation passed", proc.stdout)
 
+    def test_updates_index_renders_current_section_verbiage(self):
+        generated = (self.public / "updates" / "index.html").read_text()
+        self.assertIn("Active incidents are posted to", generated)
+        self.assertIn("https://status.walshit.com", generated)
+        self.assertNotIn("ntfy/Discord and Framerr status", generated)
+
 
 if __name__ == "__main__":
     unittest.main()

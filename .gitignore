@@ -33,8 +33,9 @@
 !kometa/config/fonts/
 !kometa/config/fonts/**
 
-# Whitelist documentation
+# Whitelist documentation and repository funding metadata
 !README.md
+!.github/FUNDING.yml
 
 # Whitelist the reviewed ntfy-to-Discord bridge source and tests. Runtime
 # secrets and state remain covered by the .env and data exclusions above.

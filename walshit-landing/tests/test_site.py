@@ -26,6 +26,7 @@ from frontmatter import (  # noqa: E402
 import nginxconf  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = ROOT.parent
 HUGO = ROOT / "hugo"
 CONTENT = HUGO / "content"
 
@@ -52,6 +53,43 @@ class HugoSourceStructureTest(unittest.TestCase):
     def test_required_homepage_structure_exists(self):
         missing = [f for f in REQUIRED_STRUCTURE_FILES if not (HUGO / f).is_file()]
         self.assertEqual(missing, [], f"missing required Hugo source files under {HUGO}: {missing}")
+
+
+class FundingIntegrationTest(unittest.TestCase):
+    """Repository and site funding links stay explicit, static, and CSP-safe."""
+
+    def test_github_funding_uses_official_buy_me_a_coffee_key(self):
+        funding = REPO_ROOT / ".github" / "FUNDING.yml"
+        self.assertTrue(funding.is_file(), f"missing GitHub funding file {funding}")
+        lines = [
+            line.strip()
+            for line in funding.read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertEqual(lines, ["buy_me_a_coffee: gregwalsh"])
+        root_ignore = (REPO_ROOT / ".gitignore").read_text()
+        self.assertIn("!.github/FUNDING.yml", root_ignore)
+
+    def test_site_uses_a_static_first_party_styled_support_link(self):
+        footer = (HUGO / "layouts" / "partials" / "footer.html").read_text()
+        self.assertIn('href="https://buymeacoffee.com/gregwalsh"', footer)
+        self.assertIn('class="coffee-link"', footer)
+        self.assertIn('rel="noopener noreferrer"', footer)
+        self.assertIn("Buy Greg a coffee", footer)
+        self.assertNotIn("<script", footer)
+        self.assertNotIn("<img", footer)
+        self.assertNotIn("button-api", footer)
+        self.assertNotIn("cdn.buymeacoffee.com", footer)
+
+        css = (HUGO / "static" / "styles.css").read_text()
+        self.assertIn(".coffee-link", css)
+
+        validator = (ROOT / "scripts" / "validate_generated.py").read_text()
+        self.assertIn('"buymeacoffee.com"', validator)
+
+    def test_support_link_css_uses_a_new_asset_version(self):
+        config = (HUGO / "hugo.toml").read_text()
+        self.assertIn('assetVersion = "20260718-1"', config)
 
 
 def _all_content_files():
