@@ -99,7 +99,7 @@ class FundingIntegrationTest(unittest.TestCase):
 
     def test_header_support_css_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260719-2"', config)
+        self.assertIn('assetVersion = "20260719-3"', config)
 
     def test_header_support_label_preserves_requested_case(self):
         css = (HUGO / "static" / "styles.css").read_text()
@@ -119,6 +119,34 @@ class FundingIntegrationTest(unittest.TestCase):
         self.assertNotRegex(css, r"\.coffee-label\s*\{[^}]*clip:")
         for marker in ('matchMedia("(max-width: 1024px)")', 'aria-expanded', ".hidden", 'Escape', ".focus()"):
             self.assertIn(marker, script)
+
+    def test_mobile_toggle_is_an_accessible_animated_hamburger(self):
+        header = (HUGO / "layouts" / "partials" / "header.html").read_text()
+        css = (HUGO / "static" / "styles.css").read_text()
+        script = (HUGO / "static" / "app.js").read_text()
+
+        self.assertIn('aria-label="Open menu"', header)
+        self.assertIn('class="nav-toggle-icon" aria-hidden="true"', header)
+        self.assertEqual(header.count('class="nav-toggle-line"'), 3)
+        self.assertNotRegex(header, r">\s*Menu\s*</button>")
+        self.assertRegex(css, r"\.nav-toggle-icon\s*\{[^}]*position:\s*relative[^}]*width:\s*24px[^}]*height:\s*18px")
+        self.assertRegex(css, r"\.nav-toggle-line\s*\{[^}]*transition:")
+        self.assertRegex(css, r"\.nav-toggle\[aria-expanded=\"true\"\][^{]*\.nav-toggle-line:first-child\s*\{[^}]*rotate\(45deg\)")
+        self.assertRegex(css, r"\.nav-toggle\[aria-expanded=\"true\"\][^{]*\.nav-toggle-line:nth-child\(2\)\s*\{[^}]*opacity:\s*0")
+        self.assertRegex(css, r"\.nav-toggle\[aria-expanded=\"true\"\][^{]*\.nav-toggle-line:last-child\s*\{[^}]*rotate\(-45deg\)")
+        self.assertIn('navToggle.setAttribute("aria-label", expanded ? "Close menu" : "Open menu")', script)
+
+    def test_mobile_hamburger_respects_reduced_motion(self):
+        css = (HUGO / "static" / "styles.css").read_text()
+        self.assertRegex(
+            css,
+            r"@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?"
+            r"\.nav-toggle-line\s*\{\s*transition:\s*none\s*!important",
+        )
+
+    def test_mobile_hamburger_uses_a_new_asset_version(self):
+        config = (HUGO / "hugo.toml").read_text()
+        self.assertIn('assetVersion = "20260719-3"', config)
 
     def test_header_support_control_is_compact_and_flat(self):
         css = (HUGO / "static" / "styles.css").read_text()
@@ -153,7 +181,7 @@ class UpdatesLinkStylingTest(unittest.TestCase):
 
     def test_updates_link_style_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260719-2"', config)
+        self.assertIn('assetVersion = "20260719-3"', config)
 
 
 class UpdatesDateSpacingTest(unittest.TestCase):
@@ -182,7 +210,7 @@ class UpdatesDateSpacingTest(unittest.TestCase):
 
     def test_update_date_spacing_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260719-2"', config)
+        self.assertIn('assetVersion = "20260719-3"', config)
 
 
 def _all_content_files():

@@ -8,6 +8,7 @@ const compactNavigation = window.matchMedia("(max-width: 1024px)");
 function setNavigationOpen(open, returnFocus = false) {
   const expanded = compactNavigation.matches && open;
   navToggle.setAttribute("aria-expanded", String(expanded));
+  navToggle.setAttribute("aria-label", expanded ? "Close menu" : "Open menu");
   primaryNavigation.hidden = compactNavigation.matches && !expanded;
   if (returnFocus) navToggle.focus();
 }

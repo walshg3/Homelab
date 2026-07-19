@@ -11,7 +11,7 @@ uglyURLs = false
   page = ["html"]
 
 [params]
-  assetVersion = "20260719-2"
+  assetVersion = "20260719-3"
 
 [markup]
   [markup.goldmark]

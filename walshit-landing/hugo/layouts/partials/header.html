@@ -1,6 +1,12 @@
 <header class="shell">
   <a class="brand" href="{{ "/" | relURL }}" aria-label="Walshit home">WAL<span class="slash">/</span>SHIT <small>Movies, shows<br>and audiobooks</small></a>
-  <button class="text-button nav-toggle" type="button" aria-expanded="false" aria-controls="primary-navigation">Menu</button>
+  <button class="text-button nav-toggle" type="button" aria-expanded="false" aria-controls="primary-navigation" aria-label="Open menu">
+    <span class="nav-toggle-icon" aria-hidden="true">
+      <span class="nav-toggle-line"></span>
+      <span class="nav-toggle-line"></span>
+      <span class="nav-toggle-line"></span>
+    </span>
+  </button>
   <nav id="primary-navigation" aria-label="Primary navigation">
     <a href="{{ "/" | relURL }}#program">Where to go</a>
     <a href="{{ "/updates/" | relURL }}">Updates</a>
