@@ -99,7 +99,7 @@ class FundingIntegrationTest(unittest.TestCase):
 
     def test_header_support_css_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260718-3"', config)
+        self.assertIn('assetVersion = "20260719-1"', config)
 
     def test_header_support_label_preserves_requested_case(self):
         css = (HUGO / "static" / "styles.css").read_text()
@@ -131,6 +131,29 @@ class FundingIntegrationTest(unittest.TestCase):
         self.assertNotRegex(rule, r"(?:^|;)\s*border:")
         self.assertIn("padding-inline: .6rem", rule)
         self.assertNotRegex(css, r"nav a\.coffee-nav:hover\s*\{[^}]*(?:transform|box-shadow)")
+
+
+class UpdatesLinkStylingTest(unittest.TestCase):
+    """Updates intro and RSS links reuse the established article-link treatment."""
+
+    def test_updates_intro_links_share_article_link_css(self):
+        css = (HUGO / "static" / "styles.css").read_text()
+        match = re.search(
+            r"\.article-body a,\s*\.article-back a,\s*\.maintenance-item a,\s*"
+            r"\.program-intro a\s*\{(?P<body>[^}]*)\}",
+            css,
+        )
+        self.assertIsNotNone(match)
+        assert match is not None
+        rule = match.group("body")
+        self.assertIn("color: inherit", rule)
+        self.assertIn("text-decoration-color: var(--red)", rule)
+        self.assertIn("text-decoration-thickness: 2px", rule)
+        self.assertIn("text-underline-offset: 3px", rule)
+
+    def test_updates_link_style_uses_a_new_asset_version(self):
+        config = (HUGO / "hugo.toml").read_text()
+        self.assertIn('assetVersion = "20260719-1"', config)
 
 
 def _all_content_files():

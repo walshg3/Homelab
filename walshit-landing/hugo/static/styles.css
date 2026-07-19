@@ -337,7 +337,7 @@ dialog::backdrop { background: rgba(23,23,19,.72); backdrop-filter: blur(2px); }
   letter-spacing: -.02em;
 }
 .article-body p, .article-body ul, .article-body ol { margin: 0 0 1.25rem; }
-.article-body a, .article-back a, .maintenance-item a {
+.article-body a, .article-back a, .maintenance-item a, .program-intro a {
   color: inherit;
   text-decoration-color: var(--red);
   text-decoration-thickness: 2px;
