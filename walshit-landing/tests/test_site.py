@@ -99,7 +99,7 @@ class FundingIntegrationTest(unittest.TestCase):
 
     def test_header_support_css_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260719-1"', config)
+        self.assertIn('assetVersion = "20260719-2"', config)
 
     def test_header_support_label_preserves_requested_case(self):
         css = (HUGO / "static" / "styles.css").read_text()
@@ -153,7 +153,36 @@ class UpdatesLinkStylingTest(unittest.TestCase):
 
     def test_updates_link_style_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260719-1"', config)
+        self.assertIn('assetVersion = "20260719-2"', config)
+
+
+class UpdatesDateSpacingTest(unittest.TestCase):
+    """Update dates stay on one line with deliberate space before the title."""
+
+    def test_update_rows_use_scoped_date_title_spacing(self):
+        template = (HUGO / "layouts" / "updates" / "list.html").read_text()
+        css = (HUGO / "static" / "styles.css").read_text()
+
+        self.assertIn('class="service update-entry"', template)
+        self.assertRegex(
+            css,
+            r"\.update-entry\s*\{[^}]*grid-template-columns:\s*minmax\(7\.5rem, auto\)"
+            r"[^}]*column-gap:\s*clamp\(1\.5rem, 2vw, 2rem\)",
+        )
+        self.assertRegex(
+            css,
+            r"\.update-entry \.num-date\s*\{[^}]*white-space:\s*nowrap",
+        )
+        self.assertRegex(
+            css,
+            r"@media \(max-width: 820px\)\s*\{[\s\S]*?\.update-entry\s*\{"
+            r"[^}]*grid-template-columns:\s*minmax\(7\.25rem, auto\) minmax\(0, 1fr\) auto"
+            r"[^}]*column-gap:\s*1rem",
+        )
+
+    def test_update_date_spacing_uses_a_new_asset_version(self):
+        config = (HUGO / "hugo.toml").read_text()
+        self.assertIn('assetVersion = "20260719-2"', config)
 
 
 def _all_content_files():
