@@ -92,7 +92,7 @@ class GeneratedSiteTest(unittest.TestCase):
             generated = page.read_text()
             self.assertEqual(generated.count("https://buymeacoffee.com/gregwalsh"), 1, page)
             self.assertIn("Buy me a Coffee", generated, page)
-            self.assertIn("buy-me-a-coffee-logo.png?v=20260718-3", generated, page)
+            self.assertIn("buy-me-a-coffee-logo.png?v=20260719-1", generated, page)
             self.assertNotIn("Buy Greg", generated, page)
             self.assertLess(generated.index("help-trigger"), generated.index("coffee-nav"), page)
             self.assertIn('class="text-button nav-toggle"', generated, page)
