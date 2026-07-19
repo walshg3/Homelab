@@ -84,6 +84,8 @@ class GeneratedSiteTest(unittest.TestCase):
         self.assertIn("Active incidents are posted to", generated)
         self.assertIn("https://status.walshit.com", generated)
         self.assertNotIn("ntfy/Discord and Framerr status", generated)
+        self.assertIn('class="service update-entry"', generated)
+        self.assertIn('class="num num-date">2026-07-15</span>', generated)
 
     def test_header_support_control_is_generated_on_every_page(self):
         pages = sorted(self.public.rglob("*.html"))
@@ -92,7 +94,7 @@ class GeneratedSiteTest(unittest.TestCase):
             generated = page.read_text()
             self.assertEqual(generated.count("https://buymeacoffee.com/gregwalsh"), 1, page)
             self.assertIn("Buy me a Coffee", generated, page)
-            self.assertIn("buy-me-a-coffee-logo.png?v=20260719-1", generated, page)
+            self.assertIn("buy-me-a-coffee-logo.png?v=20260719-2", generated, page)
             self.assertNotIn("Buy Greg", generated, page)
             self.assertLess(generated.index("help-trigger"), generated.index("coffee-nav"), page)
             self.assertIn('class="text-button nav-toggle"', generated, page)
