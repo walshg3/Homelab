@@ -10,6 +10,9 @@
 </head>
 <body>
   <a class="skip" href="#main">Skip to status</a>
+  <noscript>
+    <p class="noscript-message">Live status rendering requires JavaScript. No current health is claimed here. <a href="https://walshit.com/">Return to Walshit.com</a>.</p>
+  </noscript>
 
   <header class="shell">
     <a class="brand" href="https://walshit.com/" aria-label="Walshit home">
@@ -31,15 +34,20 @@
   </header>
 
   <main id="main" class="shell">
+    <div class="status-notices" id="status-notices" aria-live="assertive" aria-atomic="true">
+      <p class="status-notice notice-error" id="load-error" hidden>Status data is unavailable and current conditions cannot be verified.</p>
+      <p class="status-notice notice-stale" id="stale-warning" hidden>Status data is stale. Current conditions are unverified.</p>
+    </div>
     <section class="mast" aria-labelledby="overall-title">
       <div class="overall" role="status" aria-live="polite" aria-atomic="true">
         <div class="overall-head">
-          <p class="eyebrow">House report · Awaiting first issue</p>
+          <p class="eyebrow">House report · <span id="overall-state-label">Awaiting data</span></p>
           <span class="status-dot" aria-hidden="true"></span>
         </div>
         <div>
           <h1 class="overall-title" id="overall-title">Status data is being prepared.</h1>
           <p class="overall-copy">This source shell is not connected to monitoring yet. Current conditions will appear after publishing begins.</p>
+          <p class="generated-at" id="generated-at">Generation time unavailable.</p>
         </div>
       </div>
     </section>
@@ -115,6 +123,7 @@
         </div>
         <p class="eyebrow">Board pending</p>
       </div>
+      <div id="active-board">
       <article class="ticket-event" aria-labelledby="event-title">
         <div class="event-stub">
           <span class="eyebrow">Pending board</span>
@@ -126,6 +135,7 @@
           <p>Incident and maintenance notices will be filed here after the status publisher is connected.</p>
         </div>
       </article>
+      </div>
     </section>
 
     <section class="history-section" id="history" aria-labelledby="history-title">
@@ -134,14 +144,14 @@
           <p class="eyebrow">Filed and closed</p>
           <h2 id="history-title">Recent incident history</h2>
         </div>
-        <p class="eyebrow">No measured record</p>
+        <p class="eyebrow">Archive unavailable</p>
       </div>
       <div class="history-list">
         <article class="history-empty">
           <p class="history-date" aria-hidden="true">—</p>
           <div class="history-copy">
-            <h3>History will appear after monitoring begins.</h3>
-            <p>No past availability or incident record is claimed by this shell.</p>
+            <h3>No archived incidents are loaded.</h3>
+            <p>Archived incident data is not available yet because no archive contract is loaded. No past availability or incident record is claimed by this shell.</p>
           </div>
         </article>
       </div>
@@ -166,5 +176,6 @@
     <p>Service status · House report</p>
   </footer>
   <script src="navigation.js" defer></script>
+  <script src="status.js" defer></script>
 </body>
 </html>

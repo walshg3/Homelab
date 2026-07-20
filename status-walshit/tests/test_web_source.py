@@ -14,9 +14,40 @@ class WebSourceTests(unittest.TestCase):
         self.html = (WEB / "index.html").read_text(encoding="utf-8")
         self.css = (WEB / "status.css").read_text(encoding="utf-8")
 
+    def test_status_runtime_uses_only_contract_endpoints_and_sixty_second_refresh(self):
+        path = WEB / "status.js"
+        self.assertTrue(path.is_file(), "web/status.js must exist")
+        source = path.read_text(encoding="utf-8")
+        self.assertEqual(
+            set(re.findall(r'["\'](/status/v1/[^"\']+)["\']', source)),
+            {"/status/v1/summary.json", "/status/v1/history.json"},
+        )
+        self.assertIn("REFRESH_INTERVAL_MS = 60_000", source)
+        self.assertRegex(source, r"setInterval\s*\(\s*loadStatus\s*,\s*REFRESH_INTERVAL_MS\s*\)")
+        self.assertIn('document.addEventListener("DOMContentLoaded", start)', source)
+        self.assertNotIn("incidents.json", source)
+
+    def test_status_refresh_is_uncached_bounded_race_safe_and_deduplicated(self):
+        source = (WEB / "status.js").read_text(encoding="utf-8")
+        self.assertIn("FETCH_TIMEOUT_MS = 10_000", source)
+        self.assertIn("new windowObject.AbortController()", source)
+        self.assertIn('cache: "no-store"', source)
+        self.assertIn("signal: controller.signal", source)
+        self.assertIn("fetch(SUMMARY_PATH, requestOptions)", source)
+        self.assertIn("fetch(HISTORY_PATH, requestOptions)", source)
+        self.assertIn("const generation = ++requestGeneration", source)
+        self.assertGreaterEqual(source.count("generation !== requestGeneration"), 2)
+        self.assertRegex(source, r"finally\s*\{\s*windowObject\.clearTimeout\(timeoutId\)")
+        self.assertIn("lastSuccessfulFingerprint = null", source)
+        self.assertIn("fingerprintViewModel(model)", source)
+        self.assertIn("fingerprint === lastSuccessfulFingerprint", source)
+
     def test_no_inline_script_or_style(self):
         scripts = re.findall(r'<script\s+([^>]*)></script>', self.html)
-        self.assertEqual(scripts, ['src="navigation.js" defer'])
+        self.assertEqual(
+            scripts,
+            ['src="navigation.js" defer', 'src="status.js" defer'],
+        )
         self.assertNotRegex(self.html, r"(?i)<style\b")
         self.assertNotRegex(self.html, r"(?i)\sstyle\s*=")
         self.assertNotRegex(self.html, r"(?i)\son[a-z]+\s*=")
@@ -134,7 +165,8 @@ class WebSourceTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn(f"<h3>{name}</h3>", self.html)
         self.assertEqual(self.html.count("History pending"), 5)
-        self.assertEqual(self.html.count("Awaiting data"), 5)
+        stamps = re.findall(r'<span class="state-stamp">([^<]+)</span>', self.html)
+        self.assertEqual(stamps, ["Awaiting data"] * 5)
 
     def test_assets_are_local_and_page_has_no_runtime_surface(self):
         self.assertNotRegex(self.css, r"(?i)@import|@font-face|url\s*\(\s*['\"]?https?://")
@@ -153,6 +185,7 @@ class WebSourceTests(unittest.TestCase):
                 "#history",
                 "status.css",
                 "navigation.js",
+                "status.js",
                 "https://walshit.com/",
                 "https://walshit.com/updates/",
             },
@@ -160,15 +193,60 @@ class WebSourceTests(unittest.TestCase):
         runtime_assets = re.findall(
             r'<(?:script|link)[^>]+(?:src|href)="([^"]+)"', self.html
         )
-        self.assertEqual(runtime_assets, ["status.css", "navigation.js"])
+        self.assertEqual(runtime_assets, ["status.css", "navigation.js", "status.js"])
         external_anchors = re.findall(r'<a[^>]+href="(https://[^"]+)"', self.html)
         self.assertEqual(
             external_anchors,
             [
                 "https://walshit.com/",
                 "https://walshit.com/",
+                "https://walshit.com/",
                 "https://walshit.com/updates/",
             ],
+        )
+
+    def test_runtime_shell_has_honest_notices_archive_boundary_and_noscript_fallback(self):
+        required = (
+            'id="status-notices"',
+            'id="load-error"',
+            'id="stale-warning"',
+            'id="overall-state-label"',
+            'id="generated-at"',
+            'id="active-board"',
+            "Archived incident data is not available yet because no archive contract is loaded.",
+            "Live status rendering requires JavaScript.",
+            '<noscript>',
+            '<a href="https://walshit.com/">Return to Walshit.com</a>',
+        )
+        for item in required:
+            with self.subTest(item=item):
+                self.assertIn(item, self.html)
+
+    def test_status_runtime_builds_untrusted_content_with_safe_dom_methods_only(self):
+        source = (WEB / "status.js").read_text(encoding="utf-8")
+        self.assertIn("document.createElement", source)
+        self.assertIn(".textContent", source)
+        self.assertIn("setAttribute", source)
+        self.assertNotRegex(
+            source,
+            r"(?i)\.innerHTML\b|insertAdjacentHTML|document\.write|outerHTML|DOMParser|"
+            r"eval\s*\(|new\s+Function",
+        )
+        assert_public_safe(source, source="web/status.js")
+
+    def test_load_failures_are_generic_and_fail_closed(self):
+        source = (WEB / "status.js").read_text(encoding="utf-8")
+        self.assertIn("responses.every((response) => response.ok)", source)
+        self.assertIn("response.json()", source)
+        self.assertRegex(
+            source,
+            r"(?s)catch\s*\(_error\)\s*\{.*generation !== requestGeneration.*"
+            r"lastSuccessfulFingerprint = null;\s*renderUnavailable\(document\)",
+        )
+        self.assertNotRegex(source, r"console\.|\.stack\b|response\.text\s*\(")
+        self.assertIn(
+            "Status data is unavailable and current conditions cannot be verified.",
+            source,
         )
 
     def test_canonical_theme_color_and_house_report_boundary(self):
@@ -213,7 +291,8 @@ class WebSourceTests(unittest.TestCase):
         self.assertIn('class="history-section"', self.html)
         self.assertIn('id="history"', self.html)
         self.assertIn("No active-event data is available yet.", self.html)
-        self.assertIn("History will appear after monitoring begins.", self.html)
+        self.assertIn("No archived incidents are loaded.", self.html)
+        self.assertNotIn("History will appear after monitoring begins.", self.html)
         self.assertNotRegex(self.html, r"\b\d{2,3}\.\d{1,2}%|90 days ago")
 
     def test_house_report_content_css_remains_present(self):
@@ -222,6 +301,107 @@ class WebSourceTests(unittest.TestCase):
         self.assertIn(".overall", self.css)
         self.assertIn(".history-list", self.css)
         self.assertIn(".coverage", self.css)
+
+    def test_renderer_treatments_use_existing_contract_tokens(self):
+        required_selectors = (
+            ".status-notice",
+            ".notice-error",
+            ".notice-stale",
+            ".overall.state-operational",
+            ".overall.state-outage",
+            ".overall.state-maintenance",
+            ".state-stamp.state-no-data",
+            ".history-strip",
+            ".history-mark.state-no-data",
+            ".event-timeline",
+        )
+        for selector in required_selectors:
+            with self.subTest(selector=selector):
+                self.assertIn(selector, self.css)
+        compact = re.sub(r"\s+", " ", self.css.lower())
+        self.assertIn("background: var(--green)", compact)
+        self.assertIn("background: var(--red)", compact)
+        self.assertIn("background: var(--yellow)", compact)
+        self.assertLessEqual(
+            set(re.findall(r"#[0-9a-fA-F]{3,8}", self.css)),
+            {"#f2ead9", "#e5d8bd", "#171713", "#c93424", "#f1bd38", "#39754d", "#ffffff"},
+        )
+        self.assertIn(".history-placeholder > span", self.css)
+        self.assertNotIn(".history-placeholder span", self.css)
+
+    def test_mast_uses_contract_hard_shadow_magnitudes(self):
+        mast_rule = re.search(r"\.mast\s*\{([^}]*)\}", self.css, re.S)
+        if mast_rule is None:
+            self.fail(".mast CSS rule must exist")
+        self.assertIn("box-shadow: 10px 10px 0 var(--ink)", mast_rule.group(1))
+        compact = re.sub(r"\s+", " ", self.css.lower())
+        mobile = compact[compact.index("@media (max-width: 460px)"):]
+        self.assertIn(".mast { margin-top: 22px; box-shadow: 7px 7px 0 var(--ink); }", mobile)
+
+    def test_incident_tickets_use_red_hard_shadows_at_desktop_and_mobile_sizes(self):
+        compact = re.sub(r"\s+", " ", self.css.lower())
+        self.assertIn(
+            ".ticket-event { position: relative; display: grid; grid-template-columns: "
+            "180px minmax(0, 1fr); border: 2px solid var(--ink); background: var(--paper); "
+            "box-shadow: 10px 10px 0 var(--ink); }",
+            compact,
+        )
+        self.assertIn(
+            ".ticket-event.kind-incident { box-shadow: 10px 10px 0 var(--red); }",
+            compact,
+        )
+        mobile = compact[compact.index("@media (max-width: 460px)"):]
+        self.assertIn(".ticket-event { box-shadow: 7px 7px 0 var(--ink); }", mobile)
+        self.assertIn(
+            ".ticket-event.kind-incident { box-shadow: 7px 7px 0 var(--red); }",
+            mobile,
+        )
+        self.assertNotIn(".ticket-event.kind-maintenance { box-shadow:", compact)
+        self.assertNotIn(".ticket-event.event-quiet { box-shadow:", compact)
+
+    def test_dynamic_public_copy_wraps_without_changing_brand_or_navigation_labels(self):
+        wrapping_rule = re.search(
+            r"\.overall-title,\s*\.overall-copy,\s*\.component-name,\s*"
+            r"\.event-code,\s*\.event-main,\s*\.event-title,\s*\.event-body,\s*"
+            r"\.event-meta-value,\s*\.event-update-body\s*\{([^}]*)\}",
+            self.css,
+            re.S,
+        )
+        self.assertIsNotNone(wrapping_rule)
+        self.assertIn("min-width: 0", wrapping_rule.group(1))
+        self.assertIn("overflow-wrap: anywhere", wrapping_rule.group(1))
+        for selector in (".brand", "nav a", ".text-button"):
+            with self.subTest(selector=selector):
+                rule = re.search(rf"{re.escape(selector)}\s*\{{([^}}]*)\}}", self.css, re.S)
+                self.assertIsNotNone(rule)
+                self.assertNotIn("overflow-wrap", rule.group(1))
+
+    def test_overall_field_stays_yellow_while_state_dot_carries_state_color(self):
+        compact = re.sub(r"\s+", " ", self.css.lower())
+        overall_rule = re.search(r"\.overall\s*\{([^}]*)\}", self.css, re.S)
+        if overall_rule is None:
+            self.fail(".overall CSS rule must exist")
+        self.assertIn("background: var(--yellow)", overall_rule.group(1))
+        dot_colors = {
+            "operational": "var(--green)",
+            "degraded": "var(--yellow)",
+            "outage": "var(--red)",
+            "maintenance": "var(--paper-2)",
+            "no-data": "var(--paper)",
+        }
+        for state, color in dot_colors.items():
+            with self.subTest(state=state):
+                state_rule = re.search(
+                    rf"\.overall\.state-{state}\s*\{{([^}}]*)\}}",
+                    self.css,
+                    re.S,
+                )
+                if state_rule is not None:
+                    self.assertNotIn("background:", state_rule.group(1))
+                self.assertIn(
+                    f".overall.state-{state} .status-dot {{ background: {color}; }}",
+                    compact,
+                )
 
     def test_canonical_shared_chrome(self):
         compact = re.sub(r"\s+", " ", self.css.lower())
@@ -311,6 +491,8 @@ class WebSourceTests(unittest.TestCase):
         assert_public_safe(self.css, source="web/status.css")
         navigation = (WEB / "navigation.js").read_text(encoding="utf-8")
         assert_public_safe(navigation, source="web/navigation.js")
+        status = (WEB / "status.js").read_text(encoding="utf-8")
+        assert_public_safe(status, source="web/status.js")
 
 
 class HealthMarkerTests(unittest.TestCase):
