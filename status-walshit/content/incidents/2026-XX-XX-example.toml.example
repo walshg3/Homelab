@@ -1,0 +1,14 @@
+# Example only — this does not describe a real incident.
+# Copy to a lowercase *.toml filename and replace every placeholder.
+id = "inc-YYYY-MM-DD-example"
+kind = "incident"
+title = "Public service interruption"
+body = "Some visitors may be unable to use this public component."
+severity = "medium"
+started_at = "YYYY-MM-DDTHH:MM:SSZ"
+affected_components = ["watch"]
+
+[[updates]]
+at = "YYYY-MM-DDTHH:MM:SSZ"
+phase = "investigating"
+body = "Public checks are not completing consistently."

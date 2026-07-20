@@ -3,7 +3,12 @@ from copy import deepcopy
 from pathlib import Path
 import unittest
 
-from publisher.schema import SchemaError, validate_history, validate_summary
+from publisher.schema import (
+    SchemaError,
+    validate_history,
+    validate_incidents,
+    validate_summary,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -139,6 +144,14 @@ class SummaryContractTests(unittest.TestCase):
         invalid_update_status["active_events"][0]["updates"][0]["status"] = "planned"
         mutations.append(invalid_update_status)
 
+        mismatched_latest_status = deepcopy(base)
+        mismatched_latest_status["active_events"][0]["status"] = "monitoring"
+        mutations.append(mismatched_latest_status)
+
+        generated_before_update = deepcopy(base)
+        generated_before_update["generated_at"] = "2026-07-19T14:23:59Z"
+        mutations.append(generated_before_update)
+
         duplicate_id = deepcopy(base)
         duplicate_id["active_events"].append(
             deepcopy(duplicate_id["active_events"][0])
@@ -254,6 +267,173 @@ class HistoryContractTests(unittest.TestCase):
                     validate_history(document)
 
 
+class IncidentsContractTests(unittest.TestCase):
+    @staticmethod
+    def valid_document():
+        return {
+            "schema_version": "1",
+            "generated_at": "2026-07-20T13:00:00Z",
+            "events": [
+                {
+                    "id": "inc-2026-07-20-example",
+                    "kind": "incident",
+                    "status": "resolved",
+                    "title": "Public service interruption",
+                    "body": "Some visitors were unable to use this public component.",
+                    "started_at": "2026-07-20T12:00:00Z",
+                    "updated_at": "2026-07-20T12:30:00Z",
+                    "resolved_at": "2026-07-20T12:30:00Z",
+                    "affected_components": ["watch"],
+                    "updates": [
+                        {
+                            "at": "2026-07-20T12:05:00Z",
+                            "status": "investigating",
+                            "body": "Public checks were not completing consistently.",
+                        },
+                        {
+                            "at": "2026-07-20T12:30:00Z",
+                            "status": "resolved",
+                            "body": "Public checks are completing consistently again.",
+                        },
+                    ],
+                }
+            ],
+        }
+
+    def test_closed_incidents_document_validates(self):
+        validate_incidents(self.valid_document())
+
+    def test_completed_maintenance_document_validates(self):
+        document = self.valid_document()
+        event = document["events"][0]
+        event["id"] = "maint-2026-07-20-example"
+        event["kind"] = "maintenance"
+        event["status"] = "completed"
+        event["updates"] = [
+            {
+                "at": "2026-07-20T12:05:00Z",
+                "status": "planned",
+                "body": "Public maintenance was scheduled.",
+            },
+            {
+                "at": "2026-07-20T12:15:00Z",
+                "status": "in-progress",
+                "body": "Public maintenance was in progress.",
+            },
+            {
+                "at": "2026-07-20T12:30:00Z",
+                "status": "completed",
+                "body": "Public maintenance completed.",
+            },
+        ]
+
+        validate_incidents(document)
+
+    def test_incidents_rejects_malformed_lifecycle_and_ordering(self):
+        valid = self.valid_document()
+        mutations = []
+
+        unknown_root = deepcopy(valid)
+        unknown_root["private_note"] = "extra"
+        mutations.append(unknown_root)
+
+        missing_root = deepcopy(valid)
+        del missing_root["generated_at"]
+        mutations.append(missing_root)
+
+        bad_version = deepcopy(valid)
+        bad_version["schema_version"] = "2"
+        mutations.append(bad_version)
+
+        bad_generated = deepcopy(valid)
+        bad_generated["generated_at"] = "2026-07-20"
+        mutations.append(bad_generated)
+
+        generated_before_resolution = deepcopy(valid)
+        generated_before_resolution["generated_at"] = "2026-07-20T12:29:59Z"
+        mutations.append(generated_before_resolution)
+
+        unknown_event = deepcopy(valid)
+        unknown_event["events"][0]["severity"] = "high"
+        mutations.append(unknown_event)
+
+        missing_event = deepcopy(valid)
+        del missing_event["events"][0]["title"]
+        mutations.append(missing_event)
+
+        bad_kind = deepcopy(valid)
+        bad_kind["events"][0]["kind"] = "notice"
+        mutations.append(bad_kind)
+
+        bad_closed_status = deepcopy(valid)
+        bad_closed_status["events"][0]["status"] = "monitoring"
+        mutations.append(bad_closed_status)
+
+        mismatched_updated = deepcopy(valid)
+        mismatched_updated["events"][0]["updated_at"] = "2026-07-20T12:29:00Z"
+        mutations.append(mismatched_updated)
+
+        resolved_before_start = deepcopy(valid)
+        resolved_before_start["events"][0]["resolved_at"] = "2026-07-20T11:59:00Z"
+        resolved_before_start["events"][0]["updated_at"] = "2026-07-20T11:59:00Z"
+        mutations.append(resolved_before_start)
+
+        duplicate_component = deepcopy(valid)
+        duplicate_component["events"][0]["affected_components"] = ["watch", "watch"]
+        mutations.append(duplicate_component)
+
+        unknown_component = deepcopy(valid)
+        unknown_component["events"][0]["affected_components"] = ["database"]
+        mutations.append(unknown_component)
+
+        unknown_update = deepcopy(valid)
+        unknown_update["events"][0]["updates"][0]["phase"] = "investigating"
+        mutations.append(unknown_update)
+
+        closed_before_final = deepcopy(valid)
+        closed_before_final["events"][0]["updates"][0]["status"] = "resolved"
+        mutations.append(closed_before_final)
+
+        duplicate_update_time = deepcopy(valid)
+        duplicate_update_time["events"][0]["updates"][0]["at"] = (
+            "2026-07-20T12:30:00Z"
+        )
+        mutations.append(duplicate_update_time)
+
+        wrong_latest_time = deepcopy(valid)
+        wrong_latest_time["events"][0]["updates"][-1]["at"] = (
+            "2026-07-20T12:29:00Z"
+        )
+        mutations.append(wrong_latest_time)
+
+        duplicate_id = deepcopy(valid)
+        duplicate_id["events"].append(deepcopy(duplicate_id["events"][0]))
+        mutations.append(duplicate_id)
+
+        newest_not_first = deepcopy(valid)
+        older = newest_not_first["events"][0]
+        newer = deepcopy(older)
+        newer["id"] = "inc-2026-07-20-newer"
+        newer["updated_at"] = "2026-07-20T12:40:00Z"
+        newer["resolved_at"] = "2026-07-20T12:40:00Z"
+        newer["updates"][-1]["at"] = "2026-07-20T12:40:00Z"
+        newest_not_first["events"].append(newer)
+        mutations.append(newest_not_first)
+
+        wrong_id_tie_break = deepcopy(valid)
+        first = wrong_id_tie_break["events"][0]
+        first["id"] = "inc-2026-07-20-z"
+        second = deepcopy(first)
+        second["id"] = "inc-2026-07-20-a"
+        wrong_id_tie_break["events"].append(second)
+        mutations.append(wrong_id_tie_break)
+
+        for document in mutations:
+            with self.subTest(document=document):
+                with self.assertRaises(SchemaError):
+                    validate_incidents(document)
+
+
 class FixtureSafetyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -305,11 +485,43 @@ class FixtureSafetyTests(unittest.TestCase):
             "contact identity": "contact_person: A Person",
             "recovery detail": "restore_command: switch-primary",
             "recovery procedure": "recovery_procedure: switch-primary",
+            "IPv4 loopback": "127.2.3.4",
+            "IPv4 link-local": "169.254.44.8",
+            "IPv6 loopback": "::1",
+            "IPv6 unique-local": "fc00::1234",
+            "IPv6 link-local full range": "fe90::1",
+            "usr local path": "/usr/local/private/status.json",
+            "temporary path": "/tmp/private-status.json",
+            "Windows raw TOML path": r'C:\Users\Public\status.json',
+            "Windows escaped TOML path": r'C:\\Users\\Public\\status.json',
+            "UNC path": r'\\private-host\share\status.json',
+            "client secret": "client_secret = syntheticvalue",
+            "authorization": "authorization: Basic c3ludGhldGlj",
+            "bearer authorization": "authorization: Bearer syntheticvalue",
+            "access token": "access_token = syntheticvalue",
+            "refresh token": "refresh-token: syntheticvalue",
+            "passphrase": "passphrase = syntheticvalue",
+            "credential marker": "credential: syntheticvalue",
+            "natural identity": "operator Jane Example",
+            "natural recovery command": "recovery command is synthetic-switch",
+            "natural restore steps": "restore steps are documented here",
+            "natural failover procedure": "failover procedure uses synthetic-switch",
+            "natural backup path": "backup path is synthetic-path",
+            "GitHub provider token": "ghp_AAAAAAAAAAAAAAAAAAAA",
+            "Slack provider token": "xoxb-AAAAAAAAAA",
         }
         for category, text in unsafe_samples.items():
             with self.subTest(category=category):
                 with self.assertRaises(LeakError):
                     assert_public_safe(text, source=category)
+
+        for text in (
+            "This is operator-authored public prose.",
+            "The operator is investigating a public interruption.",
+            "Visitors may retry the public component.",
+        ):
+            with self.subTest(safe=text):
+                assert_public_safe(text, source="ordinary prose")
 
     def test_history_fixture_is_honest_about_measured_days(self):
         history = json.loads(

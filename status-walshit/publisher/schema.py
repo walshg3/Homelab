@@ -18,6 +18,7 @@ EVENT_STATUSES = {
     "incident": {"investigating", "identified", "monitoring"},
     "maintenance": {"planned", "in-progress"},
 }
+CLOSED_EVENT_STATUSES = {"incident": "resolved", "maintenance": "completed"}
 
 _RFC3339_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
@@ -163,6 +164,9 @@ def _validate_event(event, index):
         raise SchemaError(f"{path}.updates must have unique times in ascending order")
     if update_times[-1] != updated_at:
         raise SchemaError(f"{path}.updated_at must match the latest update")
+    if event["status"] != updates[-1]["status"]:
+        raise SchemaError(f"{path}.status must match the latest update status")
+    return updated_at
 
 
 def validate_summary(document):
@@ -174,7 +178,7 @@ def validate_summary(document):
     )
     if document["schema_version"] != SCHEMA_VERSION:
         raise SchemaError(f"summary.schema_version must be {SCHEMA_VERSION!r}")
-    _require_timestamp(document["generated_at"], "summary.generated_at")
+    generated_at = _require_timestamp(document["generated_at"], "summary.generated_at")
 
     overall = document["overall"]
     _require_exact_keys(overall, {"state", "headline", "body"}, "summary.overall")
@@ -197,10 +201,111 @@ def validate_summary(document):
     if not isinstance(active_events, list):
         raise SchemaError("summary.active_events must be an array")
     for index, event in enumerate(active_events):
-        _validate_event(event, index)
+        updated_at = _validate_event(event, index)
+        if generated_at < updated_at:
+            raise SchemaError(
+                f"summary.generated_at cannot precede summary.active_events[{index}].updated_at"
+            )
     event_ids = [event["id"] for event in active_events]
     if len(event_ids) != len(set(event_ids)):
         raise SchemaError("summary.active_events contains duplicate ids")
+
+
+def validate_incidents(document):
+    """Validate a public v1 closed incidents document."""
+    _require_exact_keys(
+        document, {"schema_version", "generated_at", "events"}, "incidents"
+    )
+    if document["schema_version"] != SCHEMA_VERSION:
+        raise SchemaError(f"incidents.schema_version must be {SCHEMA_VERSION!r}")
+    generated_at = _require_timestamp(document["generated_at"], "incidents.generated_at")
+
+    events = document["events"]
+    if not isinstance(events, list):
+        raise SchemaError("incidents.events must be an array")
+
+    event_ids = []
+    ordering = []
+    for event_index, event in enumerate(events):
+        path = f"incidents.events[{event_index}]"
+        _require_exact_keys(
+            event,
+            {
+                "id",
+                "kind",
+                "status",
+                "title",
+                "body",
+                "started_at",
+                "updated_at",
+                "resolved_at",
+                "affected_components",
+                "updates",
+            },
+            path,
+        )
+        event_id = event["id"]
+        if not isinstance(event_id, str) or not _EVENT_ID_RE.fullmatch(event_id):
+            raise SchemaError(f"{path}.id must be a lowercase public event id")
+        event_ids.append(event_id)
+
+        _require_enum(event["kind"], set(EVENT_STATUSES), f"{path}.kind")
+        kind = event["kind"]
+        closed_status = CLOSED_EVENT_STATUSES[kind]
+        if event["status"] != closed_status:
+            raise SchemaError(f"{path}.status must be {closed_status!r}")
+        _require_string(event["title"], f"{path}.title")
+        _require_string(event["body"], f"{path}.body")
+
+        started_at = _require_timestamp(event["started_at"], f"{path}.started_at")
+        updated_at = _require_timestamp(event["updated_at"], f"{path}.updated_at")
+        resolved_at = _require_timestamp(event["resolved_at"], f"{path}.resolved_at")
+        if generated_at < resolved_at:
+            raise SchemaError(f"incidents.generated_at cannot precede {path}.resolved_at")
+        if resolved_at < started_at:
+            raise SchemaError(f"{path}.resolved_at cannot precede started_at")
+        if updated_at != resolved_at:
+            raise SchemaError(f"{path}.updated_at must match resolved_at")
+
+        affected = event["affected_components"]
+        if not isinstance(affected, list) or not affected:
+            raise SchemaError(f"{path}.affected_components must be a non-empty array")
+        if any(not isinstance(item, str) or item not in COMPONENTS for item in affected):
+            raise SchemaError(f"{path}.affected_components contains an unknown component")
+        if len(affected) != len(set(affected)):
+            raise SchemaError(f"{path}.affected_components contains duplicate ids")
+
+        updates = event["updates"]
+        if not isinstance(updates, list) or not updates:
+            raise SchemaError(f"{path}.updates must be a non-empty array")
+        update_times = []
+        for update_index, update in enumerate(updates):
+            update_path = f"{path}.updates[{update_index}]"
+            _require_exact_keys(update, {"at", "status", "body"}, update_path)
+            update_at = _require_timestamp(update["at"], f"{update_path}.at")
+            if not started_at <= update_at <= resolved_at:
+                raise SchemaError(f"{update_path}.at must fall within the event window")
+            update_times.append(update_at)
+            expected_statuses = (
+                {closed_status} if update_index == len(updates) - 1 else EVENT_STATUSES[kind]
+            )
+            _require_enum(update["status"], expected_statuses, f"{update_path}.status")
+            _require_string(update["body"], f"{update_path}.body")
+        if update_times != sorted(set(update_times)):
+            raise SchemaError(f"{path}.updates must have unique times in ascending order")
+        if update_times[-1] != resolved_at:
+            raise SchemaError(f"{path}.resolved_at must match the latest update")
+        ordering.append((resolved_at, event_id))
+
+    if len(event_ids) != len(set(event_ids)):
+        raise SchemaError("incidents.events contains duplicate ids")
+    for previous, current in zip(ordering, ordering[1:]):
+        if current[0] > previous[0] or (
+            current[0] == previous[0] and current[1] < previous[1]
+        ):
+            raise SchemaError(
+                "incidents.events must be ordered by resolved_at descending, then id ascending"
+            )
 
 
 def validate_history(document):
