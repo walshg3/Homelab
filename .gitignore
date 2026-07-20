@@ -73,6 +73,13 @@
 !walshit-landing/scripts/
 !walshit-landing/scripts/**
 
+# Whitelist the public status source subtree.
+!status-walshit/
+!status-walshit/**
+
+# Keep generated status-page verification output out of Git.
+status-walshit/render/
+
 # Keep Hugo build output and Python bytecode caches out of Git even
 # though the directories above are whitelisted.
 walshit-landing/hugo/public/

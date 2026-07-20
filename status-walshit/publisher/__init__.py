@@ -1,0 +1,1 @@
+"""Status publisher contract package."""
