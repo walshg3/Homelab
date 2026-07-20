@@ -1,0 +1,73 @@
+{
+  "schema_version": "1",
+  "generated_at": "2026-07-19T14:30:00Z",
+  "overall": {
+    "state": "maintenance",
+    "headline": "Brief intermission in progress.",
+    "body": "Home base and Requests are paused for scheduled care. The other public doors remain available."
+  },
+  "components": [
+    {
+      "id": "watch",
+      "name": "Watch",
+      "description": "Plex playback and sign-in",
+      "state": "operational",
+      "uptime_90d_pct": 100.0,
+      "history_days_available": 3
+    },
+    {
+      "id": "home",
+      "name": "Home base",
+      "description": "Dashboard and links",
+      "state": "maintenance",
+      "uptime_90d_pct": 100.0,
+      "history_days_available": 3
+    },
+    {
+      "id": "requests",
+      "name": "Requests",
+      "description": "Film and series requests",
+      "state": "maintenance",
+      "uptime_90d_pct": 100.0,
+      "history_days_available": 3
+    },
+    {
+      "id": "audiobooks",
+      "name": "Audiobooks",
+      "description": "Listening and library access",
+      "state": "operational",
+      "uptime_90d_pct": 100.0,
+      "history_days_available": 3
+    },
+    {
+      "id": "site",
+      "name": "Walshit.com",
+      "description": "Updates and guides",
+      "state": "operational",
+      "uptime_90d_pct": 100.0,
+      "history_days_available": 3
+    }
+  ],
+  "active_events": [
+    {
+      "id": "maint-2026-07-19-public-care",
+      "kind": "maintenance",
+      "status": "in-progress",
+      "title": "Home base and Requests maintenance",
+      "body": "The dashboard and request window are temporarily unavailable during scheduled care. No action is needed.",
+      "started_at": "2026-07-19T14:00:00Z",
+      "updated_at": "2026-07-19T14:05:00Z",
+      "affected_components": [
+        "home",
+        "requests"
+      ],
+      "updates": [
+        {
+          "at": "2026-07-19T14:05:00Z",
+          "status": "in-progress",
+          "body": "Scheduled care is under way within the announced window."
+        }
+      ]
+    }
+  ]
+}

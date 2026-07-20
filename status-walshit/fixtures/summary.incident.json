@@ -1,0 +1,73 @@
+{
+  "schema_version": "1",
+  "generated_at": "2026-07-19T15:00:00Z",
+  "overall": {
+    "state": "outage",
+    "headline": "Playback is having a bad night.",
+    "body": "Watch is interrupted and Requests is running slowly. Public updates will appear here until service steadies."
+  },
+  "components": [
+    {
+      "id": "watch",
+      "name": "Watch",
+      "description": "Plex playback and sign-in",
+      "state": "outage",
+      "uptime_90d_pct": 66.67,
+      "history_days_available": 3
+    },
+    {
+      "id": "home",
+      "name": "Home base",
+      "description": "Dashboard and links",
+      "state": "operational",
+      "uptime_90d_pct": 100.0,
+      "history_days_available": 3
+    },
+    {
+      "id": "requests",
+      "name": "Requests",
+      "description": "Film and series requests",
+      "state": "degraded",
+      "uptime_90d_pct": 100.0,
+      "history_days_available": 3
+    },
+    {
+      "id": "audiobooks",
+      "name": "Audiobooks",
+      "description": "Listening and library access",
+      "state": "operational",
+      "uptime_90d_pct": 100.0,
+      "history_days_available": 3
+    },
+    {
+      "id": "site",
+      "name": "Walshit.com",
+      "description": "Updates and guides",
+      "state": "operational",
+      "uptime_90d_pct": 100.0,
+      "history_days_available": 3
+    }
+  ],
+  "active_events": [
+    {
+      "id": "inc-2026-07-19-watch",
+      "kind": "incident",
+      "status": "investigating",
+      "title": "Playback interruptions under investigation",
+      "body": "Some viewers may be unable to begin or resume playback. Requests may also respond slowly.",
+      "started_at": "2026-07-19T14:18:00Z",
+      "updated_at": "2026-07-19T14:24:00Z",
+      "affected_components": [
+        "watch",
+        "requests"
+      ],
+      "updates": [
+        {
+          "at": "2026-07-19T14:24:00Z",
+          "status": "investigating",
+          "body": "Public playback checks are not completing consistently."
+        }
+      ]
+    }
+  ]
+}
