@@ -12,6 +12,13 @@ COMPONENTS = {
     "audiobooks": "Audiobooks",
     "site": "Walshit.com",
 }
+COMPONENT_DESCRIPTIONS = {
+    "watch": "Plex playback and sign-in",
+    "home": "Dashboard and links",
+    "requests": "Film and series requests",
+    "audiobooks": "Listening and library access",
+    "site": "Updates and guides",
+}
 PUBLIC_STATES = {"operational", "degraded", "outage", "maintenance", "no-data"}
 HISTORY_STATES = set(PUBLIC_STATES)
 EVENT_STATUSES = {
@@ -93,7 +100,8 @@ def _validate_component(component, index):
         raise SchemaError(f"{path}.id is not a public component")
     if component["name"] != COMPONENTS[component_id]:
         raise SchemaError(f"{path}.name does not match {component_id!r}")
-    _require_string(component["description"], f"{path}.description")
+    if component["description"] != COMPONENT_DESCRIPTIONS[component_id]:
+        raise SchemaError(f"{path}.description does not match {component_id!r}")
     _require_enum(component["state"], PUBLIC_STATES, f"{path}.state")
 
     percentage = component["uptime_90d_pct"]

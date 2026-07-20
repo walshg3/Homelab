@@ -4,6 +4,7 @@ from pathlib import Path
 import unittest
 
 from publisher.schema import (
+    COMPONENT_DESCRIPTIONS,
     SchemaError,
     validate_history,
     validate_incidents,
@@ -24,6 +25,28 @@ class SummaryContractTests(unittest.TestCase):
 
     def test_operational_fixture_validates(self):
         validate_summary(deepcopy(self.operational))
+
+    def test_component_descriptions_are_canonical(self):
+        self.assertEqual(
+            COMPONENT_DESCRIPTIONS,
+            {
+                "watch": "Plex playback and sign-in",
+                "home": "Dashboard and links",
+                "requests": "Film and series requests",
+                "audiobooks": "Listening and library access",
+                "site": "Updates and guides",
+            },
+        )
+        for component in self.operational["components"]:
+            self.assertEqual(
+                component["description"],
+                COMPONENT_DESCRIPTIONS[component["id"]],
+            )
+
+        changed = deepcopy(self.operational)
+        changed["components"][0]["description"] = "A drifting description"
+        with self.assertRaises(SchemaError):
+            validate_summary(changed)
 
     def test_summary_accepts_no_data_states(self):
         document = deepcopy(self.operational)
