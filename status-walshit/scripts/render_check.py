@@ -2,6 +2,7 @@
 """Deterministic loopback Chromium acceptance check for the status renderer."""
 
 from contextlib import contextmanager
+from copy import deepcopy
 from html.parser import HTMLParser
 import json
 import mimetypes
@@ -255,6 +256,7 @@ def assert_common_valid(document, summary):
         "operational": "Operational",
         "outage": "Outage",
         "maintenance": "Maintenance",
+        "no-data": "No data",
     }[summary["overall"]["state"]]
     assert NodeCollector.text(overall) == expected_label
     mast = document.by_class("overall")[0]
@@ -309,6 +311,29 @@ def run_checks():
     assert_common_valid(stale, incident)
     assert_visible(stale, "stale-warning")
     scenarios.append("stale")
+
+    no_data_summary = deepcopy(load_fixture("summary.operational.json"))
+    no_data_summary["overall"] = {
+        "state": "no-data",
+        "headline": "Public status is not verified yet.",
+        "body": "Fresh probe results are required before availability can be confirmed.",
+    }
+    for component in no_data_summary["components"]:
+        component["state"] = "no-data"
+    no_data = render(chromium, no_data_summary, history, 1784472300000)
+    assert_common_valid(no_data, no_data_summary)
+    assert_hidden(no_data, "stale-warning")
+    assert NodeCollector.text(no_data.by_id("overall-state-label")) == "No data"
+    stamps = no_data.by_class("state-stamp")
+    assert len(stamps) == 5
+    assert all(NodeCollector.text(stamp) == "No data" for stamp in stamps)
+    quiet = no_data.by_class("event-quiet")
+    assert len(quiet) == 1
+    assert (
+        "No active incidents or planned maintenance are on the board."
+        in NodeCollector.text(quiet[0])
+    )
+    scenarios.append("no-data")
 
     invalid = load_fixture("summary.operational.json")
     invalid["schema_version"] = "2"

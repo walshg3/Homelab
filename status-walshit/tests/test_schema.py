@@ -20,6 +20,13 @@ class SummaryContractTests(unittest.TestCase):
     def test_operational_fixture_validates(self):
         validate_summary(deepcopy(self.operational))
 
+    def test_summary_accepts_no_data_states(self):
+        document = deepcopy(self.operational)
+        document["overall"]["state"] = "no-data"
+        document["components"][0]["state"] = "no-data"
+
+        validate_summary(document)
+
     def test_summary_rejects_unknown_missing_and_incorrect_types(self):
         mutations = []
 

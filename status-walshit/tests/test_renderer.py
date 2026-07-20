@@ -71,6 +71,28 @@ class RendererPureFunctionTests(unittest.TestCase):
         )
         self.assertEqual(result, [True, True, False, False, False, False, False, False])
 
+    def test_no_data_summary_builds_unverified_view_model(self):
+        result = run_renderer(
+            "(() => {"
+            'const summary = structuredClone(require("./fixtures/summary.operational.json"));'
+            'const history = require("./fixtures/history.sample.json");'
+            'summary.overall.state = "no-data";'
+            'summary.components[0].state = "no-data";'
+            "const model = renderer.buildViewModel(summary, history, Date.parse(summary.generated_at));"
+            "return {overall: model.overall, component: model.components[0]};"
+            "})()"
+        )
+        self.assertEqual(result["overall"]["state"], "no-data")
+        self.assertEqual(
+            result["overall"]["presentation"],
+            {"label": "No data", "className": "state-no-data"},
+        )
+        self.assertEqual(result["component"]["state"], "no-data")
+        self.assertEqual(
+            result["component"]["presentation"],
+            {"label": "No data", "className": "state-no-data"},
+        )
+
     def test_runtime_timestamp_validation_rejects_calendar_and_clock_overflow(self):
         result = run_renderer(
             "(() => {"

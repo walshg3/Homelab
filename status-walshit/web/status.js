@@ -22,8 +22,8 @@
     Object.freeze({id: "audiobooks", name: "Audiobooks"}),
     Object.freeze({id: "site", name: "Walshit.com"}),
   ]);
-  const LIVE_STATES = new Set(["operational", "degraded", "outage", "maintenance"]);
-  const HISTORY_STATES = new Set([...LIVE_STATES, "no-data"]);
+  const PUBLIC_STATES = new Set(["operational", "degraded", "outage", "maintenance", "no-data"]);
+  const HISTORY_STATES = new Set(PUBLIC_STATES);
   const EVENT_STATUSES = Object.freeze({
     incident: new Set(["investigating", "identified", "monitoring"]),
     maintenance: new Set(["planned", "in-progress"]),
@@ -111,7 +111,7 @@
     ]));
     requireCondition(summary.schema_version === "1" && isTimestamp(summary.generated_at));
     requireCondition(hasExactKeys(summary.overall, ["state", "headline", "body"]));
-    requireCondition(LIVE_STATES.has(summary.overall.state));
+    requireCondition(PUBLIC_STATES.has(summary.overall.state));
     requireCondition(isText(summary.overall.headline) && isText(summary.overall.body));
     requireCondition(Array.isArray(summary.components) && summary.components.length === COMPONENT_REGISTRY.length);
     const ids = [];
@@ -120,7 +120,7 @@
         "id", "name", "description", "state", "uptime_90d_pct", "history_days_available",
       ]));
       requireCondition(registryName(component.id) === component.name && isText(component.description));
-      requireCondition(LIVE_STATES.has(component.state));
+      requireCondition(PUBLIC_STATES.has(component.state));
       requireCondition(component.uptime_90d_pct === null ||
         (typeof component.uptime_90d_pct === "number" && Number.isFinite(component.uptime_90d_pct) &&
           component.uptime_90d_pct >= 0 && component.uptime_90d_pct <= 100));

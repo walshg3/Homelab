@@ -12,8 +12,8 @@ COMPONENTS = {
     "audiobooks": "Audiobooks",
     "site": "Walshit.com",
 }
-PUBLIC_STATES = {"operational", "degraded", "outage", "maintenance"}
-HISTORY_STATES = PUBLIC_STATES | {"no-data"}
+PUBLIC_STATES = {"operational", "degraded", "outage", "maintenance", "no-data"}
+HISTORY_STATES = set(PUBLIC_STATES)
 EVENT_STATUSES = {
     "incident": {"investigating", "identified", "monitoring"},
     "maintenance": {"planned", "in-progress"},
