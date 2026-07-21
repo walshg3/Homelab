@@ -8,8 +8,13 @@ files:
 docker compose -f compose.yaml -f compose.staging.yaml COMMAND
 ```
 
-The production-shaped base publishes no port. The override binds exactly
-`127.0.0.1:3015:8080`; it is not reachable on a non-loopback host interface.
+The production base publishes no port. The staging override binds only
+`127.0.0.1:3015`; it is not reachable from the LAN.
+
+The two staging bridges use explicit, non-overlapping private `/28` subnets
+(`10.255.250.0/28` and `10.255.250.16/28`). This avoids dependence on the
+Docker host's exhausted automatic address pools. Verify these ranges do not
+overlap host routes or existing Docker networks before bringing up the stack.
 Cloudflare and DNS remain a separately gated future transaction.
 
 ## Prepare the secret without printing it

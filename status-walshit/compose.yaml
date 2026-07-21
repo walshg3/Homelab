@@ -92,9 +92,15 @@ services:
 networks:
   publisher-egress:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 10.255.250.0/28
   web-internal:
     driver: bridge
     internal: true
+    ipam:
+      config:
+        - subnet: 10.255.250.16/28
 
 volumes:
   public-data:
