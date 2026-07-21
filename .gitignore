@@ -80,6 +80,10 @@
 # Keep generated status-page verification output out of Git.
 status-walshit/render/
 
+# Local status runtime state and probe credentials are never repository inputs.
+status-walshit/secrets/*
+status-walshit/runtime/*
+
 # Keep Hugo build output and Python bytecode caches out of Git even
 # though the directories above are whitelisted.
 walshit-landing/hugo/public/

@@ -1,0 +1,105 @@
+name: status-walshit
+
+services:
+  publisher:
+    build:
+      context: .
+      dockerfile: Dockerfile.publisher
+    platform: linux/amd64
+    user: "1000:1000"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    cpus: "0.50"
+    mem_limit: 192m
+    pids_limit: 64
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python3", "-m", "publisher.runner", "health", "--public-dir", "/var/lib/status/public"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - publisher-egress
+    volumes:
+      - type: volume
+        source: public-data
+        target: /var/lib/status/public
+      - type: volume
+        source: publisher-state
+        target: /var/lib/status/state
+      - type: bind
+        source: ./content
+        target: /app/content
+        read_only: true
+        bind:
+          create_host_path: false
+    secrets:
+      - source: plex-probe
+        target: plex-probe.env
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    platform: linux/amd64
+    user: "101:101"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    cpus: "0.25"
+    mem_limit: 64m
+    pids_limit: 32
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "test \"$$(wget -qO- http://127.0.0.1:8080/healthz.txt)\" = status-walshit-web-ok"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      publisher:
+        condition: service_healthy
+    networks:
+      - web-internal
+    volumes:
+      - type: volume
+        source: public-data
+        target: /usr/share/nginx/html/status/v2
+        read_only: true
+        volume:
+          nocopy: true
+
+networks:
+  publisher-egress:
+    driver: bridge
+  web-internal:
+    driver: bridge
+    internal: true
+
+volumes:
+  public-data:
+  publisher-state:
+
+secrets:
+  plex-probe:
+    file: ./secrets/plex-probe.env
