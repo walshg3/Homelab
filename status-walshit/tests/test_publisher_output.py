@@ -1065,53 +1065,77 @@ class AtomicWriterTests(unittest.TestCase):
 
 
 class LocalOnlySourceTests(unittest.TestCase):
-    def test_new_source_has_no_network_library_call_or_runtime_location_surface(self):
-        sources = {
-            path.name: path.read_text(encoding="utf-8")
-            for path in (ROOT / "publisher" / "probes.py", ROOT / "publisher" / "publisher.py")
+    def test_probe_network_surface_is_exact_and_publisher_remains_network_free(self):
+        probes = (ROOT / "publisher" / "probes.py").read_text(encoding="utf-8")
+        publisher = (ROOT / "publisher" / "publisher.py").read_text(
+            encoding="utf-8"
+        )
+        expected_public_urls = {
+            "https://app.plex.tv/desktop/",
+            (
+                "https://plex.tv/api/v2/resources?"
+                "includeHttps=1&includeRelay=1&includeIPv6=1"
+            ),
+            "https://home.walshit.com/api/health",
+            "https://requests.walshit.com/api/v1/status",
+            "https://books.walshit.com/healthcheck",
+            "https://walshit.com/healthz.txt",
         }
-        forbidden = (
+        probe_tree = ast.parse(probes)
+        https_literals = {
+            node.value
+            for node in ast.walk(probe_tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value.startswith("https://")
+        }
+        self.assertEqual(https_literals, expected_public_urls)
+        self.assertNotIn("http://", probes.lower())
+        self.assertNotIn("_create_unverified_context", probes.lower())
+        self.assertNotIn("cert_none", probes.lower())
+        self.assertNotIn("check_hostname = false", probes.lower())
+        for token in ("subprocess", "importlib", "ctypes", "socket", "getaddrinfo"):
+            with self.subTest(source="probes.py", token=token):
+                self.assertNotIn(token, probes.lower())
+
+        for token in (
             "http://",
             "https://",
             "urllib",
-            "requests",
+            "requests.",
             "socket",
             "urlopen",
             "getaddrinfo",
             "subprocess",
-        )
-        for filename, source in sources.items():
-            for token in forbidden:
-                with self.subTest(filename=filename, token=token):
-                    self.assertNotIn(token, source.lower())
-            self.assertNotIn("://", source)
+        ):
+            with self.subTest(source="publisher.py", token=token):
+                self.assertNotIn(token, publisher.lower())
 
     def test_new_source_ast_restricts_imports_dynamic_loading_and_execution(self):
         paths = (ROOT / "publisher" / "probes.py", ROOT / "publisher" / "publisher.py")
-        allowed_imports = {
-            "__future__",
-            "dataclasses",
-            "datetime",
-            "errno",
-            "fcntl",
-            "json",
-            "os",
-            "pathlib",
-            "secrets",
-            "stat",
-            "publisher.content",
-            "publisher.history",
-            "publisher.privacy",
-            "publisher.probes",
-            "publisher.schema",
-            "publisher.statemachine",
+        common_imports = {
+            "__future__", "dataclasses", "errno", "json", "os", "stat",
+            "publisher.privacy", "publisher.schema", "publisher.statemachine",
+        }
+        allowed_by_file = {
+            "probes.py": common_imports
+            | {
+                "ipaddress", "math", "re", "signal", "ssl", "threading", "time", "tomllib",
+                "urllib.error", "urllib.parse", "urllib.request",
+                "xml.etree.ElementTree",
+            },
+            "publisher.py": common_imports
+            | {
+                "argparse", "datetime", "fcntl", "pathlib", "secrets", "sys",
+                "time", "publisher.content", "publisher.history",
+                "publisher.probes",
+            },
         }
         forbidden_import_roots = {
             "aiohttp",
             "asyncio",
             "ctypes",
             "ftplib",
-            "http",
             "httpx",
             "httplib",
             "imaplib",
@@ -1125,7 +1149,6 @@ class LocalOnlySourceTests(unittest.TestCase):
             "socketserver",
             "subprocess",
             "telnetlib",
-            "urllib",
             "urllib3",
             "websockets",
             "xmlrpc",
@@ -1185,13 +1208,23 @@ class LocalOnlySourceTests(unittest.TestCase):
                     elif isinstance(function, ast.Attribute):
                         calls.append(function.attr)
             with self.subTest(path=path.name, check="allowlist"):
-                self.assertEqual(set(imports) - allowed_imports, set())
+                self.assertEqual(set(imports) - allowed_by_file[path.name], set())
             with self.subTest(path=path.name, check="forbidden imports"):
                 self.assertFalse(
                     {name.split(".")[0] for name in imports} & forbidden_import_roots
                 )
             with self.subTest(path=path.name, check="forbidden calls"):
                 self.assertFalse(set(calls) & forbidden_calls)
+            if path.name == "publisher.py":
+                self.assertFalse(
+                    {name.split(".")[0] for name in imports}
+                    & {"http", "ssl", "urllib", "xml"}
+                )
+            if path.name == "probes.py":
+                self.assertFalse(
+                    set(calls)
+                    & {"debug", "error", "exception", "info", "log", "print", "warning"}
+                )
 
 
 if __name__ == "__main__":

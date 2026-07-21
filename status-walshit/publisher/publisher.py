@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import errno
 import fcntl
 import json
 import os
+from pathlib import Path
 import secrets
 import stat
+import sys
 
-from publisher.content import ContentEvent, ContentIssue, ContentLoadResult
+from publisher.content import ContentEvent, ContentIssue, ContentLoadResult, load_content
 from publisher.history import summarize_buckets, update_daily_buckets
 from publisher.privacy import assert_public_safe, has_disallowed_narrative_location
-from publisher.probes import validate_complete_cycle
+from publisher.probes import load_check_config, run_probe_cycle, validate_complete_cycle
 from publisher.schema import (
     COMPONENTS,
     COMPONENT_DESCRIPTIONS,
@@ -650,7 +653,14 @@ def _validate_replacement_entry(directory_fd, target, temporary, identity):
         raise ValueError("publisher temporary output changed unexpectedly")
 
 
-def write_public_documents(output_dir, cycle, fault_hook=None):
+def write_public_documents(
+    output_dir,
+    cycle,
+    fault_hook=None,
+    *,
+    _lock_held=False,
+    _directory_fd=None,
+):
     """Write three public files atomically, with summary replaced last.
 
     Each replacement is filesystem-atomic.  The three replacements are not a
@@ -665,6 +675,10 @@ def write_public_documents(output_dir, cycle, fault_hook=None):
         raise TypeError("cycle must be a PublishCycle")
     if fault_hook is not None and not callable(fault_hook):
         raise TypeError("fault_hook must be callable")
+    if type(_lock_held) is not bool:
+        raise TypeError("internal lock state must be boolean")
+    if (_directory_fd is None) != (not _lock_held):
+        raise ValueError("internal directory descriptor requires a held lock")
 
     summary = cycle.summary_document
     history = cycle.history_document
@@ -681,17 +695,26 @@ def write_public_documents(output_dir, cycle, fault_hook=None):
         for attribute, text in text_by_attribute.items()
     }
 
-    _absolute, directory_fd = _safe_output_directory(output_dir)
+    if _directory_fd is None:
+        _absolute, directory_fd = _safe_output_directory(output_dir)
+    else:
+        if type(_directory_fd) is not int:
+            raise TypeError("internal directory descriptor must be an integer")
+        directory_fd = os.dup(_directory_fd)
+        if not stat.S_ISDIR(os.fstat(directory_fd).st_mode):
+            os.close(directory_fd)
+            raise ValueError("internal output descriptor must be a directory")
     created = {}
     try:
-        try:
-            fcntl.flock(directory_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as exc:
-            if exc.errno in {errno.EACCES, errno.EAGAIN}:
-                raise BlockingIOError(
-                    errno.EWOULDBLOCK, "public output directory is locked"
-                ) from exc
-            raise
+        if not _lock_held:
+            try:
+                fcntl.flock(directory_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                if exc.errno in {errno.EACCES, errno.EAGAIN}:
+                    raise BlockingIOError(
+                        errno.EWOULDBLOCK, "public output directory is locked"
+                    ) from exc
+                raise
         _validate_output_entries(directory_fd)
         open_flags = (
             os.O_WRONLY
@@ -748,3 +771,566 @@ def write_public_documents(output_dir, cycle, fault_hook=None):
             except OSError:
                 pass
         os.close(directory_fd)
+
+
+_MAX_LOCAL_JSON_BYTES = 2 * 1024 * 1024
+_MAX_LOCAL_JSON_DEPTH = 64
+_MAX_LOCAL_JSON_NODES = 20_000
+_MAX_LOCAL_JSON_TEXT = 1024 * 1024
+_STATE_TEMP_ATTEMPTS = 16
+
+
+class CliUsageError(ValueError):
+    """Fixed CLI usage failure whose text is never emitted."""
+
+
+class _SafeArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        raise CliUsageError()
+
+
+@dataclass(frozen=True, slots=True)
+class _CliFailure(Exception):
+    category: str
+    exception_name: str
+
+
+def _exception_name(exception):
+    name = type(exception).__name__
+    if not name.isascii() or not name.replace("_", "").isalnum():
+        return "Exception"
+    return name
+
+
+def _raise_stage(category, exception):
+    raise _CliFailure(category, _exception_name(exception)) from None
+
+
+def _parser():
+    parser = _SafeArgumentParser(add_help=True, allow_abbrev=False)
+    parser.add_argument("--once", action="store_true", required=True)
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--content-root", required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--state-file", required=True)
+    return parser
+
+
+def _safe_file_location(path, *, target_kind):
+    try:
+        supplied = os.fspath(path)
+    except TypeError as exc:
+        raise TypeError(f"{target_kind} path must be path-like") from exc
+    if type(supplied) is not str:
+        raise TypeError(f"{target_kind} path must resolve to text")
+    absolute = os.path.abspath(supplied)
+    parent, filename = os.path.split(absolute)
+    if filename in {"", ".", ".."} or len(filename.encode("utf-8")) > 255:
+        raise ValueError(f"{target_kind} path must name a bounded file")
+    _parent_absolute, directory_fd = _safe_output_directory(parent)
+    try:
+        metadata = _entry_metadata(directory_fd, filename)
+        if metadata is not None and not stat.S_ISREG(metadata.st_mode):
+            raise ValueError(f"{target_kind} target must be regular or absent")
+        return absolute, directory_fd, filename
+    except BaseException:
+        os.close(directory_fd)
+        raise
+
+
+def _read_bounded_entry(directory_fd, filename):
+    metadata = _entry_metadata(directory_fd, filename)
+    if metadata is None:
+        return None
+    if not stat.S_ISREG(metadata.st_mode):
+        raise ValueError("local JSON entry must be regular")
+    if metadata.st_size > _MAX_LOCAL_JSON_BYTES:
+        raise ValueError("local JSON entry exceeds its bound")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
+    file_fd = os.open(filename, flags, dir_fd=directory_fd)
+    try:
+        opened = os.fstat(file_fd)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or (metadata.st_dev, metadata.st_ino)
+            != (opened.st_dev, opened.st_ino)
+        ):
+            raise ValueError("local JSON entry must remain regular")
+        chunks = []
+        size = 0
+        while size <= _MAX_LOCAL_JSON_BYTES:
+            chunk = os.read(
+                file_fd, min(8192, _MAX_LOCAL_JSON_BYTES + 1 - size)
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+        final = os.fstat(file_fd)
+        if (
+            size > _MAX_LOCAL_JSON_BYTES
+            or (opened.st_dev, opened.st_ino) != (final.st_dev, final.st_ino)
+            or opened.st_size != final.st_size
+            or opened.st_mtime_ns != final.st_mtime_ns
+        ):
+            raise ValueError("local JSON entry changed while reading")
+        return b"".join(chunks).decode("utf-8")
+    finally:
+        os.close(file_fd)
+
+
+def _strict_local_json_object(pairs):
+    document = {}
+    for key, value in pairs:
+        if key in document:
+            raise ValueError("local JSON contains a duplicate key")
+        document[key] = value
+    return document
+
+
+def _reject_local_json_constant(_value):
+    raise ValueError("local JSON contains a non-finite number")
+
+
+def _decode_local_json(raw):
+    """Decode strict bounded local JSON before schema or state restoration."""
+    if type(raw) is not str:
+        raise TypeError("local JSON must be text")
+    try:
+        document = json.loads(
+            raw,
+            object_pairs_hook=_strict_local_json_object,
+            parse_constant=_reject_local_json_constant,
+        )
+    except RecursionError as exc:
+        raise ValueError("local JSON is too deeply nested") from exc
+
+    nodes = 0
+    text_size = 0
+    stack = [(document, 0)]
+    while stack:
+        value, depth = stack.pop()
+        nodes += 1
+        if depth > _MAX_LOCAL_JSON_DEPTH or nodes > _MAX_LOCAL_JSON_NODES:
+            raise ValueError("local JSON exceeds complexity bounds")
+        if type(value) is dict:
+            for key, child in value.items():
+                text_size += len(key.encode("utf-8"))
+                stack.append((child, depth + 1))
+        elif type(value) is list:
+            stack.extend((child, depth + 1) for child in value)
+        elif type(value) is str:
+            text_size += len(value.encode("utf-8"))
+        elif type(value) is float and not (
+            float("-inf") < value < float("inf")
+        ):
+            raise ValueError("local JSON contains a non-finite number")
+        elif value is not None and type(value) not in (bool, int, float):
+            raise ValueError("local JSON contains an invalid value")
+        if text_size > _MAX_LOCAL_JSON_TEXT:
+            raise ValueError("local JSON exceeds text bounds")
+    return document
+
+
+def _existing_history(output_dir, generated_at, *, _directory_fd=None):
+    if _directory_fd is None:
+        _absolute, directory_fd = _safe_output_directory(output_dir)
+    else:
+        directory_fd = os.dup(_directory_fd)
+    try:
+        raw = _read_bounded_entry(directory_fd, "history.json")
+    finally:
+        os.close(directory_fd)
+    if raw is None:
+        return empty_history_document(generated_at), False
+    assert_public_safe(raw, source="existing public history")
+    document = _decode_local_json(raw)
+    validate_history(document)
+    generated_text = document["generated_at"]
+    history_generated = datetime.fromisoformat(
+        generated_text.replace("Z", "+00:00")
+    ).astimezone(timezone.utc)
+    if history_generated >= generated_at:
+        raise ValueError("existing history is not older than this cycle")
+    for component in document["components"]:
+        if any(
+            datetime.fromisoformat(day["date"]).date() > history_generated.date()
+            for day in component["days"]
+        ):
+            raise ValueError("existing history contains a future daily bucket")
+    return document, True
+
+
+def _validated_content_root(content_root):
+    absolute, directory_fd = _safe_output_directory(content_root)
+    try:
+        for category in ("incidents", "maintenance"):
+            metadata = _entry_metadata(directory_fd, category)
+            if metadata is not None and not stat.S_ISDIR(metadata.st_mode):
+                raise ValueError("content category must be a real directory or absent")
+    finally:
+        os.close(directory_fd)
+    return Path(absolute)
+
+
+def _prior_state(
+    state_file,
+    history,
+    history_existed,
+    *,
+    _directory_fd=None,
+    _filename=None,
+):
+    if _directory_fd is None:
+        _absolute, directory_fd, filename = _safe_file_location(
+            state_file, target_kind="state"
+        )
+    else:
+        if type(_filename) is not str:
+            raise TypeError("internal state filename must be text")
+        directory_fd = os.dup(_directory_fd)
+        filename = _filename
+    try:
+        try:
+            raw = _read_bounded_entry(directory_fd, filename)
+        except Exception:
+            return initial_publisher_state(), True
+    finally:
+        os.close(directory_fd)
+    if raw is None:
+        return initial_publisher_state(), history_existed
+    try:
+        document = _decode_local_json(raw)
+        state = restore_publisher_state(document)
+    except (TypeError, ValueError, json.JSONDecodeError, UnicodeError, RecursionError):
+        return initial_publisher_state(), True
+    if state.generated_at != history["generated_at"]:
+        return initial_publisher_state(), True
+    return state, False
+
+
+def _open_state_temporary(directory_fd, filename):
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    for _attempt in range(_STATE_TEMP_ATTEMPTS):
+        temporary = f".{filename}.publisher.{secrets.token_hex(16)}.tmp"
+        try:
+            file_fd = os.open(temporary, flags, 0o600, dir_fd=directory_fd)
+        except FileExistsError:
+            continue
+        return temporary, file_fd
+    raise FileExistsError("state temporary allocation failed")
+
+
+def persist_publisher_state(
+    state_file,
+    state,
+    *,
+    _lock_held=False,
+    _directory_fd=None,
+    _filename=None,
+):
+    """Atomically persist one validated internal state with mode 0600."""
+    if type(state) is not PublisherState:
+        raise TypeError("state must be a PublisherState")
+    if type(_lock_held) is not bool:
+        raise TypeError("internal lock state must be boolean")
+    if (_directory_fd is None) != (not _lock_held):
+        raise ValueError("internal directory descriptor requires a held lock")
+    document = state.to_document()
+    restore_publisher_state(document)
+    serialized = (_canonical_json(document) + "\n").encode("utf-8")
+    if _directory_fd is None:
+        absolute, directory_fd, filename = _safe_file_location(
+            state_file, target_kind="state"
+        )
+        del absolute
+    else:
+        if type(_directory_fd) is not int or type(_filename) is not str:
+            raise TypeError("internal state location is invalid")
+        directory_fd = os.dup(_directory_fd)
+        filename = _filename
+    temporary = None
+    identity = None
+    try:
+        if not _lock_held:
+            try:
+                fcntl.flock(directory_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                if exc.errno in {errno.EACCES, errno.EAGAIN}:
+                    raise BlockingIOError(
+                        errno.EWOULDBLOCK, "state directory is locked"
+                    ) from exc
+                raise
+        temporary, file_fd = _open_state_temporary(directory_fd, filename)
+        try:
+            metadata = os.fstat(file_fd)
+            identity = (metadata.st_dev, metadata.st_ino)
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError("state temporary must be regular")
+            os.fchmod(file_fd, 0o600)
+            with os.fdopen(file_fd, "wb") as handle:
+                file_fd = -1
+                handle.write(serialized)
+                handle.flush()
+                os.fsync(handle.fileno())
+        finally:
+            if file_fd >= 0:
+                os.close(file_fd)
+        target = _entry_metadata(directory_fd, filename)
+        if target is not None and not stat.S_ISREG(target.st_mode):
+            raise ValueError("state target changed to an unsafe entry")
+        if not _same_regular_entry(directory_fd, temporary, identity):
+            raise ValueError("state temporary changed unexpectedly")
+        os.replace(
+            temporary,
+            filename,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+        )
+        temporary = None
+        os.fsync(directory_fd)
+    finally:
+        if temporary is not None and identity is not None:
+            try:
+                if _same_regular_entry(directory_fd, temporary, identity):
+                    os.unlink(temporary, dir_fd=directory_fd)
+            except OSError:
+                pass
+        os.close(directory_fd)
+
+
+def _success_line(cycle, results, state_recovered):
+    document = {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": cycle.summary_document["generated_at"],
+        "components": [
+            {"component_id": result.component_id, "outcome": result.outcome}
+            for result in results
+        ],
+        "issue_count": cycle.issue_count,
+        "state_recovered": state_recovered,
+    }
+    return _canonical_json(document) + "\n"
+
+
+class _TransactionLocks:
+    """Nonblocking locks for unique pinned directories in inode order."""
+
+    def __init__(self, directory_fds):
+        unique = {}
+        for directory_fd in directory_fds:
+            metadata = os.fstat(directory_fd)
+            if not stat.S_ISDIR(metadata.st_mode):
+                raise ValueError("transaction target must be a directory")
+            unique.setdefault((metadata.st_dev, metadata.st_ino), directory_fd)
+        self._ordered = tuple(unique[identity] for identity in sorted(unique))
+        self._acquired = []
+
+    def __enter__(self):
+        try:
+            for directory_fd in self._ordered:
+                try:
+                    fcntl.flock(directory_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError as exc:
+                    if exc.errno in {errno.EACCES, errno.EAGAIN}:
+                        raise BlockingIOError(
+                            errno.EWOULDBLOCK, "publisher transaction is locked"
+                        ) from exc
+                    raise
+                self._acquired.append(directory_fd)
+        except BaseException:
+            self._release()
+            raise
+        return self
+
+    def _release(self):
+        while self._acquired:
+            directory_fd = self._acquired.pop()
+            try:
+                fcntl.flock(directory_fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+
+    def __exit__(self, exception_type, exception, traceback):
+        self._release()
+        return False
+
+
+def _once(options, generated_at, *, transport, probe_clock, environ):
+    try:
+        config = load_check_config(options.config)
+    except Exception as exc:
+        _raise_stage("config", exc)
+
+    output_fd = None
+    try:
+        output_absolute, output_fd = _safe_output_directory(options.output_dir)
+        _validate_output_entries(output_fd)
+    except Exception as exc:
+        if output_fd is not None:
+            os.close(output_fd)
+        _raise_stage("output", exc)
+
+    state_fd = None
+    try:
+        state_absolute, state_fd, state_name = _safe_file_location(
+            options.state_file, target_kind="state"
+        )
+        if state_absolute in {
+            os.path.join(output_absolute, filename)
+            for filename, _attribute in _PUBLIC_FILES
+        }:
+            raise ValueError("state cannot overlap public output")
+    except Exception as exc:
+        os.close(output_fd)
+        if state_fd is not None:
+            os.close(state_fd)
+        _raise_stage("state-path", exc)
+
+    try:
+        content_root = _validated_content_root(options.content_root)
+    except Exception as exc:
+        os.close(output_fd)
+        os.close(state_fd)
+        _raise_stage("content", exc)
+
+    try:
+        try:
+            transaction = _TransactionLocks((output_fd, state_fd))
+            transaction.__enter__()
+        except Exception as exc:
+            _raise_stage("lock", exc)
+        try:
+            try:
+                history, history_existed = _existing_history(
+                    output_absolute,
+                    generated_at,
+                    _directory_fd=output_fd,
+                )
+            except Exception as exc:
+                _raise_stage("history", exc)
+
+            try:
+                prior_state, state_recovered = _prior_state(
+                    state_absolute,
+                    history,
+                    history_existed,
+                    _directory_fd=state_fd,
+                    _filename=state_name,
+                )
+            except Exception as exc:
+                _raise_stage("state-path", exc)
+
+            try:
+                content_result = load_content(content_root)
+            except Exception as exc:
+                _raise_stage("content", exc)
+
+            try:
+                results = run_probe_cycle(
+                    config,
+                    transport=transport,
+                    clock=probe_clock,
+                    environ=environ,
+                )
+            except Exception as exc:
+                _raise_stage("probe", exc)
+
+            try:
+                cycle = build_publish_cycle(
+                    prior_state,
+                    history,
+                    content_result,
+                    results,
+                    generated_at,
+                )
+            except Exception as exc:
+                _raise_stage("probe", exc)
+
+            try:
+                write_public_documents(
+                    output_absolute,
+                    cycle,
+                    _lock_held=True,
+                    _directory_fd=output_fd,
+                )
+            except Exception as exc:
+                _raise_stage("public-write", exc)
+            try:
+                persist_publisher_state(
+                    state_absolute,
+                    cycle.next_state,
+                    _lock_held=True,
+                    _directory_fd=state_fd,
+                    _filename=state_name,
+                )
+            except Exception as exc:
+                _raise_stage("state-write", exc)
+            return _success_line(cycle, results, state_recovered)
+        finally:
+            transaction.__exit__(None, None, None)
+    finally:
+        os.close(output_fd)
+        os.close(state_fd)
+
+
+def main(
+    argv=None,
+    *,
+    now=None,
+    transport=None,
+    probe_clock=None,
+    environ=None,
+    stdout=None,
+    stderr=None,
+):
+    """Run the bounded publisher once and return a process-style exit code."""
+    if stdout is None:
+        stdout = sys.stdout
+    if stderr is None:
+        stderr = sys.stderr
+    try:
+        options = _parser().parse_args(argv)
+    except (CliUsageError, SystemExit):
+        failure = _CliFailure("usage", "CliUsageError")
+    else:
+        if now is None:
+            now = lambda: datetime.now(timezone.utc)
+        if probe_clock is None:
+            from time import monotonic
+
+            probe_clock = monotonic
+        if environ is None:
+            environ = os.environ
+        try:
+            current = now()
+            generated_at = _utc_timestamp(
+                current.replace(microsecond=0), "current time"
+            )
+        except Exception as exc:
+            failure = _CliFailure("clock", _exception_name(exc))
+        else:
+            try:
+                line = _once(
+                    options,
+                    generated_at,
+                    transport=transport,
+                    probe_clock=probe_clock,
+                    environ=environ,
+                )
+            except _CliFailure as exc:
+                failure = exc
+            else:
+                stdout.write(line)
+                return 0
+    error = _canonical_json(
+        {"error": failure.category, "exception": failure.exception_name}
+    )
+    stderr.write(error + "\n")
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
