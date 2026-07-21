@@ -24,8 +24,8 @@ EXPECTED_REQUESTS = {
     "/status.css",
     "/navigation.js",
     "/status.js",
-    "/status/v1/summary.json",
-    "/status/v1/history.json",
+    "/status/v2/summary.json",
+    "/status/v2/history.json",
     "/favicon.ico",
 }
 
@@ -94,10 +94,10 @@ def fixture_server(
         def do_GET(self):
             path = urlsplit(self.path).path
             requests.append(path)
-            if path == "/status/v1/summary.json":
+            if path == "/status/v2/summary.json":
                 body = b"{" if malformed_summary else summary_bytes
                 return self.send_bytes(200, "application/json", body)
-            if path == "/status/v1/history.json":
+            if path == "/status/v2/history.json":
                 if fail_history:
                     return self.send_bytes(503, "text/plain", b"unavailable")
                 return self.send_bytes(200, "application/json", history_bytes)
@@ -202,8 +202,8 @@ def render(
     unexpected = sorted(set(recorded) - EXPECTED_REQUESTS)
     assert not unexpected, f"unexpected same-origin requests: {unexpected}"
     assert set(recorded) >= {
-        "/status/v1/summary.json",
-        "/status/v1/history.json",
+        "/status/v2/summary.json",
+        "/status/v2/history.json",
     }, f"status endpoints were not both requested: {recorded}"
     document = NodeCollector()
     document.feed(completed.stdout)
@@ -245,6 +245,11 @@ def assert_common_valid(document, summary):
             f"{row['attrs']['data-component']} has {len(row_marks)} history marks"
         )
     assert all("tabindex" not in mark["attrs"] for mark in marks)
+    strip_containers = document.by_class("history-strip-container")
+    assert len(strip_containers) == 5
+    strip_labels = [node["attrs"].get("aria-label", "") for node in strip_containers]
+    assert all("3 days with recorded states" in label for label in strip_labels)
+    assert all("days measured" not in label for label in strip_labels)
     assert len(document.by_class("state-stamp")) == 5
     text = NodeCollector.text(body)
     assert "3 days on record" in text
@@ -268,7 +273,7 @@ def assert_event(document, summary):
     tickets = [node for node in document.by_class("ticket-event") if "active-event" in node["classes"]]
     assert len(tickets) == 1
     ticket_text = NodeCollector.text(tickets[0])
-    for expected in (event["title"], event["body"], "Severity not specified by v1 contract"):
+    for expected in (event["title"], event["body"], "Severity not specified by v2 contract"):
         assert expected in ticket_text
     assert event["kind"].title() in ticket_text
     expected_status = event["status"].replace("-", " ")
@@ -336,7 +341,7 @@ def run_checks():
     scenarios.append("no-data")
 
     invalid = load_fixture("summary.operational.json")
-    invalid["schema_version"] = "2"
+    invalid["schema_version"] = "1"
     unavailable = render(chromium, invalid, history, 1784472300000)
     assert_visible(unavailable, "load-error")
     body = next(node for node in unavailable.nodes if node["tag"] == "body")

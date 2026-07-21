@@ -19,8 +19,8 @@ class WebSourceTests(unittest.TestCase):
         self.assertTrue(path.is_file(), "web/status.js must exist")
         source = path.read_text(encoding="utf-8")
         self.assertEqual(
-            set(re.findall(r'["\'](/status/v1/[^"\']+)["\']', source)),
-            {"/status/v1/summary.json", "/status/v1/history.json"},
+            set(re.findall(r'["\'](/status/v2/[^"\']+)["\']', source)),
+            {"/status/v2/summary.json", "/status/v2/history.json"},
         )
         self.assertIn("REFRESH_INTERVAL_MS = 60_000", source)
         self.assertRegex(source, r"setInterval\s*\(\s*loadStatus\s*,\s*REFRESH_INTERVAL_MS\s*\)")
@@ -233,6 +233,12 @@ class WebSourceTests(unittest.TestCase):
             r"eval\s*\(|new\s+Function",
         )
         assert_public_safe(source, source="web/status.js")
+
+    def test_runtime_uses_measured_availability_copy_without_uptime_claims(self):
+        source = (WEB / "status.js").read_text(encoding="utf-8")
+        self.assertIn("% measured availability", source)
+        self.assertIn("measured availability unavailable", source)
+        self.assertNotIn("% uptime", source.lower())
 
     def test_load_failures_are_generic_and_fail_closed(self):
         source = (WEB / "status.js").read_text(encoding="utf-8")

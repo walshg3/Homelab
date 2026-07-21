@@ -77,13 +77,12 @@ class DailyBucketTests(unittest.TestCase):
 
 class HistoryStatisticsTests(unittest.TestCase):
     def test_history_stats_is_immutable_and_exposes_exact_public_fields(self):
-        stats = HistoryStats(1, 100.0, "2026-07-19")
+        stats = HistoryStats(1, "2026-07-19")
 
         self.assertEqual(
             [field.name for field in fields(stats)],
             [
                 "history_days_available",
-                "uptime_90d_pct",
                 "first_measured_date",
             ],
         )
@@ -105,20 +104,7 @@ class HistoryStatisticsTests(unittest.TestCase):
         self.assertEqual(stats.history_days_available, 3)
         self.assertEqual(stats.first_measured_date, "2026-07-16")
 
-    def test_uptime_uses_daily_outage_ratio_and_rounds_to_two_decimals(self):
-        examples = [
-            (["operational", "outage", "operational"], 66.67),
-            (["operational", "degraded", "maintenance"], 100.0),
-        ]
-        for states, expected in examples:
-            days = [
-                {"date": f"2026-07-{index:02d}", "state": state}
-                for index, state in enumerate(states, start=1)
-            ]
-            with self.subTest(states=states):
-                self.assertEqual(summarize_buckets(days).uptime_90d_pct, expected)
-
-    def test_uptime_excludes_mixed_no_data_and_uses_half_even_ties(self):
+    def test_daily_stats_never_infer_duration_percentage(self):
         mixed = [
             {"date": "2026-07-01", "state": "operational"},
             {"date": "2026-07-02", "state": "outage"},
@@ -128,19 +114,9 @@ class HistoryStatisticsTests(unittest.TestCase):
             summarize_buckets(mixed),
             HistoryStats(
                 history_days_available=2,
-                uptime_90d_pct=50.0,
                 first_measured_date="2026-07-01",
             ),
         )
-
-        exact_half_tie = [
-            {
-                "date": (date(2026, 1, 1) + timedelta(days=offset)).isoformat(),
-                "state": "operational" if offset == 0 else "outage",
-            }
-            for offset in range(32)
-        ]
-        self.assertEqual(summarize_buckets(exact_half_tie).uptime_90d_pct, 3.12)
 
     def test_no_data_only_has_no_measured_statistics(self):
         self.assertEqual(
@@ -152,7 +128,6 @@ class HistoryStatisticsTests(unittest.TestCase):
             ),
             HistoryStats(
                 history_days_available=0,
-                uptime_90d_pct=None,
                 first_measured_date=None,
             ),
         )
@@ -253,6 +228,29 @@ class HistoryInputValidationTests(unittest.TestCase):
 
 
 class HistoryRetentionAndSchemaTests(unittest.TestCase):
+    def test_sparse_dates_use_exact_trailing_calendar_window_without_backfill(self):
+        days = [
+            {"date": "2026-01-01", "state": "outage"},
+            {"date": "2026-01-02", "state": "maintenance"},
+            {"date": "2026-03-15", "state": "operational"},
+        ]
+
+        retained = update_daily_buckets(
+            days,
+            datetime(2026, 4, 1, 23, 0, tzinfo=timezone.utc),
+            "degraded",
+            window_end=datetime(2026, 4, 1, 23, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(
+            retained,
+            [
+                {"date": "2026-01-02", "state": "maintenance"},
+                {"date": "2026-03-15", "state": "operational"},
+                {"date": "2026-04-01", "state": "degraded"},
+            ],
+        )
+
     def test_output_days_form_valid_history_for_all_public_components(self):
         components = []
         for component_id, name in COMPONENTS.items():

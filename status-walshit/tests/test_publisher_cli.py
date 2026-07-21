@@ -153,6 +153,13 @@ class PublisherCliTests(unittest.TestCase):
                 [component["state"] for component in summary["components"]],
                 ["no-data"] * 5,
             )
+            self.assertTrue(
+                all(
+                    component["availability_seconds_measured"] == 0
+                    and component["availability_90d_pct"] is None
+                    for component in summary["components"]
+                )
+            )
             mode = stat.S_IMODE(fixture.state_file.stat().st_mode)
             self.assertEqual(mode, 0o600)
 
@@ -163,6 +170,9 @@ class PublisherCliTests(unittest.TestCase):
             self.assertEqual(
                 [component["state"] for component in summary["components"]],
                 ["operational"] * 5,
+            )
+            self.assertTrue(
+                all(component["availability_seconds_measured"] == 0 for component in summary["components"])
             )
             history = json.loads((fixture.output / "history.json").read_text())
             validate_history(history)
@@ -189,6 +199,20 @@ class PublisherCliTests(unittest.TestCase):
                 [item["days"] for item in history["components"]],
                 [item["days"] for item in prior_history["components"]],
             )
+
+    def test_v1_state_recovers_as_unsupported_without_losing_v2_history(self):
+        with TemporaryDirectory() as temporary:
+            fixture = CliFixture(temporary)
+            self.assertEqual(invoke(fixture, at(0))[0], 0)
+            state = json.loads(fixture.state_file.read_text(encoding="utf-8"))
+            state["schema_version"] = "1"
+            fixture.state_file.write_text(json.dumps(state), encoding="utf-8")
+
+            code, stdout, stderr, _transport = invoke(fixture, at(1))
+            self.assertEqual((code, stderr), (0, ""))
+            self.assertTrue(json.loads(stdout)["state_recovered"])
+            history = json.loads((fixture.output / "history.json").read_text())
+            self.assertEqual(history["schema_version"], "2")
 
     def test_generation_skew_recovers_fresh(self):
         with TemporaryDirectory() as temporary:
@@ -231,6 +255,47 @@ class PublisherCliTests(unittest.TestCase):
             self.assertEqual(history.read_bytes(), sentinel)
             self.assertFalse(fixture.state_file.exists())
 
+    def test_v1_history_fails_closed_before_probes_or_writes(self):
+        with TemporaryDirectory() as temporary:
+            fixture = CliFixture(temporary)
+            self.assertEqual(invoke(fixture, at(0))[0], 0)
+            history_path = fixture.output / "history.json"
+            history = json.loads(history_path.read_text(encoding="utf-8"))
+            history["schema_version"] = "1"
+            history_path.write_text(json.dumps(history), encoding="utf-8")
+            sentinel_history = history_path.read_bytes()
+            sentinel_state = fixture.state_file.read_bytes()
+
+            code, stdout, stderr, transport = invoke(fixture, at(1))
+            self.assertNotEqual(code, 0)
+            self.assertEqual(stdout, "")
+            self.assertIn('"error":"history"', stderr)
+            self.assertEqual(transport.calls, [])
+            self.assertEqual(history_path.read_bytes(), sentinel_history)
+            self.assertEqual(fixture.state_file.read_bytes(), sentinel_state)
+
+    def test_out_of_window_history_fails_before_probes_or_writes(self):
+        with TemporaryDirectory() as temporary:
+            fixture = CliFixture(temporary)
+            self.assertEqual(invoke(fixture, at(0))[0], 0)
+            history_path = fixture.output / "history.json"
+            history = json.loads(history_path.read_text(encoding="utf-8"))
+            history["components"][0]["days"].insert(
+                0, {"date": "2026-04-21", "state": "outage"}
+            )
+            history_path.write_text(json.dumps(history), encoding="utf-8")
+            sentinel_history = history_path.read_bytes()
+            sentinel_state = fixture.state_file.read_bytes()
+
+            code, stdout, stderr, transport = invoke(fixture, at(1))
+
+            self.assertNotEqual(code, 0)
+            self.assertEqual(stdout, "")
+            self.assertIn('"error":"history"', stderr)
+            self.assertEqual(transport.calls, [])
+            self.assertEqual(history_path.read_bytes(), sentinel_history)
+            self.assertEqual(fixture.state_file.read_bytes(), sentinel_state)
+
     def test_local_json_decoder_rejects_duplicates_constants_and_complexity(self):
         invalid = (
             '{"schema_version":"bad","schema_version":"1"}',
@@ -254,16 +319,16 @@ class PublisherCliTests(unittest.TestCase):
             malformed_documents = (
                 '{"schema_version":"bad",' + valid[1:],
                 valid.replace(
-                    '"schema_version":"1"',
-                    '"nonfinite":NaN,"schema_version":"1"',
+                    '"schema_version":"2"',
+                    '"nonfinite":NaN,"schema_version":"2"',
                 ),
                 valid.replace(
-                    '"schema_version":"1"',
-                    '"nonfinite":Infinity,"schema_version":"1"',
+                    '"schema_version":"2"',
+                    '"nonfinite":Infinity,"schema_version":"2"',
                 ),
                 valid.replace(
-                    '"schema_version":"1"',
-                    '"nonfinite":-Infinity,"schema_version":"1"',
+                    '"schema_version":"2"',
+                    '"nonfinite":-Infinity,"schema_version":"2"',
                 ),
             )
             for malformed in malformed_documents:
@@ -494,14 +559,23 @@ class PublisherCliTests(unittest.TestCase):
             )
             self.assertFalse(fixture.state_file.exists())
 
-    def test_state_write_failure_is_safe_and_next_run_recovers_from_history(self):
+    def test_nonempty_state_write_failure_recovers_without_duplicate_or_stale_attribution(self):
         with TemporaryDirectory() as temporary:
             fixture = CliFixture(temporary)
+            self.assertEqual(invoke(fixture, at(0))[0], 0)
+            self.assertEqual(invoke(fixture, at(1))[0], 0)
+            self.assertEqual(invoke(fixture, at(2))[0], 0)
+            state_before_failure = json.loads(fixture.state_file.read_text())
+            self.assertEqual(
+                state_before_failure["components"][0]["availability_days"],
+                [{"date": "2026-07-20", "measured_seconds": 60, "available_seconds": 60}],
+            )
+
             with patch(
                 "publisher.publisher.persist_publisher_state",
                 side_effect=OSError("sensitive state path and value"),
             ):
-                code, stdout, stderr, _transport = invoke(fixture, at(0))
+                code, stdout, stderr, _transport = invoke(fixture, at(3))
             self.assertNotEqual(code, 0)
             self.assertEqual(stdout, "")
             self.assertEqual(
@@ -509,13 +583,43 @@ class PublisherCliTests(unittest.TestCase):
                 '{"error":"state-write","exception":"OSError"}\n',
             )
             self.assertTrue((fixture.output / "history.json").is_file())
-            self.assertFalse(fixture.state_file.exists())
+            self.assertEqual(json.loads(fixture.state_file.read_text()), state_before_failure)
+            failed_summary = json.loads((fixture.output / "summary.json").read_text())
+            self.assertEqual(failed_summary["components"][0]["availability_seconds_measured"], 120)
+            public_history_evidence = [
+                item["days"]
+                for item in json.loads((fixture.output / "history.json").read_text())["components"]
+            ]
 
-            code, stdout, stderr, _transport = invoke(fixture, at(1))
+            code, stdout, stderr, _transport = invoke(fixture, at(4))
             self.assertEqual((code, stderr), (0, ""))
             self.assertTrue(json.loads(stdout)["state_recovered"])
             summary = json.loads((fixture.output / "summary.json").read_text())
             self.assertEqual(summary["overall"]["state"], "no-data")
+            self.assertTrue(
+                all(
+                    component["availability_seconds_measured"] == 0
+                    and component["availability_90d_pct"] is None
+                    for component in summary["components"]
+                )
+            )
+            recovered_history = json.loads((fixture.output / "history.json").read_text())
+            validate_history(recovered_history)
+            self.assertEqual(
+                [item["days"] for item in recovered_history["components"]],
+                public_history_evidence,
+            )
+
+            self.assertEqual(invoke(fixture, at(5))[0], 0)
+            self.assertEqual(invoke(fixture, at(6))[0], 0)
+            fresh_summary = json.loads((fixture.output / "summary.json").read_text())
+            self.assertTrue(
+                all(
+                    component["availability_seconds_measured"] == 60
+                    and component["availability_90d_pct"] == 100
+                    for component in fresh_summary["components"]
+                )
+            )
 
     def test_probe_orchestration_error_never_discloses_exception_text(self):
         with TemporaryDirectory() as temporary:

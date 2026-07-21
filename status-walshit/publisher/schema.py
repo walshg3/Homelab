@@ -1,10 +1,11 @@
-"""Executable, dependency-free contract for public status v1 JSON."""
+"""Executable, dependency-free contract for public status v2 JSON."""
 
 from datetime import date, datetime
+from decimal import Decimal
 import re
 
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 COMPONENTS = {
     "watch": "Watch",
     "home": "Home base",
@@ -35,7 +36,7 @@ _EVENT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
 
 
 class SchemaError(ValueError):
-    """Raised when a public document does not match the v1 contract."""
+    """Raised when a public document does not match the v2 contract."""
 
 
 def _require_object(value, path):
@@ -89,7 +90,8 @@ def _validate_component(component, index):
             "name",
             "description",
             "state",
-            "uptime_90d_pct",
+            "availability_90d_pct",
+            "availability_seconds_measured",
             "history_days_available",
         },
         path,
@@ -104,13 +106,37 @@ def _validate_component(component, index):
         raise SchemaError(f"{path}.description does not match {component_id!r}")
     _require_enum(component["state"], PUBLIC_STATES, f"{path}.state")
 
-    percentage = component["uptime_90d_pct"]
+    percentage = component["availability_90d_pct"]
     if percentage is not None and (
         isinstance(percentage, bool)
         or not isinstance(percentage, (int, float))
+        or percentage != percentage
+        or percentage in (float("inf"), float("-inf"))
         or not 0 <= percentage <= 100
     ):
-        raise SchemaError(f"{path}.uptime_90d_pct must be null or between 0 and 100")
+        raise SchemaError(
+            f"{path}.availability_90d_pct must be null or finite between 0 and 100"
+        )
+    if percentage is not None and Decimal(str(percentage)).quantize(
+        Decimal("0.001")
+    ) != Decimal(str(percentage)):
+        raise SchemaError(
+            f"{path}.availability_90d_pct cannot exceed three decimal places"
+        )
+
+    measured = component["availability_seconds_measured"]
+    if (
+        isinstance(measured, bool)
+        or not isinstance(measured, int)
+        or not 0 <= measured <= 7_776_000
+    ):
+        raise SchemaError(
+            f"{path}.availability_seconds_measured must be between 0 and 7776000"
+        )
+    if (percentage is None) != (measured == 0):
+        raise SchemaError(
+            f"{path}.availability_90d_pct must be null exactly when no seconds are measured"
+        )
 
     days = component["history_days_available"]
     if isinstance(days, bool) or not isinstance(days, int) or not 0 <= days <= 90:
@@ -178,7 +204,7 @@ def _validate_event(event, index):
 
 
 def validate_summary(document):
-    """Validate a public v1 summary document."""
+    """Validate a public v2 summary document."""
     _require_exact_keys(
         document,
         {"schema_version", "generated_at", "overall", "components", "active_events"},
@@ -220,7 +246,7 @@ def validate_summary(document):
 
 
 def validate_incidents(document):
-    """Validate a public v1 closed incidents document."""
+    """Validate a public v2 closed incidents document."""
     _require_exact_keys(
         document, {"schema_version", "generated_at", "events"}, "incidents"
     )
@@ -317,7 +343,7 @@ def validate_incidents(document):
 
 
 def validate_history(document):
-    """Validate a public v1 history document."""
+    """Validate a public v2 history document."""
     _require_exact_keys(
         document, {"schema_version", "generated_at", "components"}, "history"
     )

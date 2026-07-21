@@ -14,8 +14,17 @@ import secrets
 import stat
 import sys
 
+from publisher.availability import (
+    summarize_availability,
+    update_availability_days,
+    validate_availability_days,
+)
 from publisher.content import ContentEvent, ContentIssue, ContentLoadResult, load_content
-from publisher.history import summarize_buckets, update_daily_buckets
+from publisher.history import (
+    summarize_buckets,
+    update_daily_buckets,
+    validate_history_window,
+)
 from publisher.privacy import assert_public_safe, has_disallowed_narrative_location
 from publisher.probes import load_check_config, run_probe_cycle, validate_complete_cycle
 from publisher.schema import (
@@ -137,6 +146,7 @@ class PublisherComponentState:
     component_id: str
     health: ComponentState
     auto_outage_started_at: str | None
+    availability_days: tuple[tuple[str, int, int], ...] = ()
 
     def to_document(self):
         return {
@@ -149,6 +159,14 @@ class PublisherComponentState:
                 "failure_streak": self.health.failure_streak,
             },
             "auto_outage_started_at": self.auto_outage_started_at,
+            "availability_days": [
+                {
+                    "date": selected_date,
+                    "measured_seconds": measured,
+                    "available_seconds": available,
+                }
+                for selected_date, measured, available in self.availability_days
+            ],
         }
 
 
@@ -237,7 +255,11 @@ def restore_publisher_state(document) -> PublisherState:
     component_ids = []
     for index, component in enumerate(components):
         path = f"state.components[{index}]"
-        _exact_dict(component, {"id", "health", "auto_outage_started_at"}, path)
+        _exact_dict(
+            component,
+            {"id", "health", "auto_outage_started_at", "availability_days"},
+            path,
+        )
         component_id = component["id"]
         if type(component_id) is not str:
             raise TypeError(f"{path}.id must be a string")
@@ -274,11 +296,23 @@ def restore_publisher_state(document) -> PublisherState:
             raise ValueError("an outage start requires state.generated_at")
         if generated is not None and outage_started is not None and outage_started > generated:
             raise ValueError("outage start cannot follow state.generated_at")
+        availability_days = component["availability_days"]
+        validate_availability_days(availability_days, generated_at=generated)
+        if generated is None and availability_days:
+            raise ValueError("availability days require state.generated_at")
         restored.append(
             PublisherComponentState(
                 component_id,
                 health,
                 None if outage_started is None else _timestamp_text(outage_started),
+                tuple(
+                    (
+                        item["date"],
+                        item["measured_seconds"],
+                        item["available_seconds"],
+                    )
+                    for item in availability_days
+                ),
             )
         )
 
@@ -323,6 +357,7 @@ def _canonical_json(document):
 def _validated_public_json(summary, history, incidents):
     validate_summary(summary)
     validate_history(history)
+    validate_history_window(history)
     validate_incidents(incidents)
     generated_values = {
         summary["generated_at"], history["generated_at"], incidents["generated_at"]
@@ -413,10 +448,11 @@ def build_publish_cycle(
         prior_generated = _parse_state_timestamp(
             restored_prior.generated_at, "prior_state.generated_at"
         )
-        if prior_generated > generated:
-            raise ValueError("prior state cannot be newer than this cycle")
+        if prior_generated >= generated:
+            raise ValueError("prior state must be older than this cycle")
 
     validate_history(prior_history_document)
+    validate_history_window(prior_history_document)
     history = json.loads(_canonical_json(prior_history_document))
     history_generated = datetime.fromisoformat(
         history["generated_at"].replace("Z", "+00:00")
@@ -428,13 +464,6 @@ def build_publish_cycle(
         and prior_generated != history_generated
     ):
         raise ValueError("prior state and history must share one generation")
-    for component in history["components"]:
-        if any(
-            datetime.fromisoformat(day["date"]).date() > history_generated.date()
-            for day in component["days"]
-        ):
-            raise ValueError("prior history cannot contain future daily buckets")
-
     results = validate_complete_cycle(probe_results)
     active_events, closed_events = _content_documents(content_result)
     active_maintenance = {
@@ -455,6 +484,14 @@ def build_publish_cycle(
     public_states = {}
     for result in results:
         prior_component = prior_by_id[result.component_id]
+        availability_days = prior_component.to_document()["availability_days"]
+        if restored_prior.generated_at is not None:
+            availability_days = update_availability_days(
+                availability_days,
+                prior_generated,
+                generated,
+                prior_component.health.public_state,
+            )
         health = transition(
             prior_component.health,
             result.outcome,
@@ -469,7 +506,19 @@ def build_publish_cycle(
         else:
             outage_started = None
         next_components.append(
-            PublisherComponentState(result.component_id, health, outage_started)
+            PublisherComponentState(
+                result.component_id,
+                health,
+                outage_started,
+                tuple(
+                    (
+                        item["date"],
+                        item["measured_seconds"],
+                        item["available_seconds"],
+                    )
+                    for item in availability_days
+                ),
+            )
         )
         public_states[result.component_id] = health.public_state
 
@@ -487,13 +536,18 @@ def build_publish_cycle(
     history_by_id = {item["id"]: item for item in history["components"]}
     history_components = []
     summary_components = []
+    next_by_id = {item.component_id: item for item in next_components}
     for component_id, name in COMPONENTS.items():
         days = update_daily_buckets(
             history_by_id[component_id]["days"],
             generated,
             public_states[component_id],
+            window_end=generated,
         )
         stats = summarize_buckets(days)
+        availability = summarize_availability(
+            next_by_id[component_id].to_document()["availability_days"]
+        )
         history_components.append({"id": component_id, "name": name, "days": days})
         summary_components.append(
             {
@@ -501,7 +555,10 @@ def build_publish_cycle(
                 "name": name,
                 "description": COMPONENT_DESCRIPTIONS[component_id],
                 "state": public_states[component_id],
-                "uptime_90d_pct": stats.uptime_90d_pct,
+                "availability_90d_pct": availability.availability_90d_pct,
+                "availability_seconds_measured": (
+                    availability.availability_seconds_measured
+                ),
                 "history_days_available": stats.history_days_available,
             }
         )
@@ -947,18 +1004,13 @@ def _existing_history(output_dir, generated_at, *, _directory_fd=None):
     assert_public_safe(raw, source="existing public history")
     document = _decode_local_json(raw)
     validate_history(document)
+    validate_history_window(document)
     generated_text = document["generated_at"]
     history_generated = datetime.fromisoformat(
         generated_text.replace("Z", "+00:00")
     ).astimezone(timezone.utc)
     if history_generated >= generated_at:
         raise ValueError("existing history is not older than this cycle")
-    for component in document["components"]:
-        if any(
-            datetime.fromisoformat(day["date"]).date() > history_generated.date()
-            for day in component["days"]
-        ):
-            raise ValueError("existing history contains a future daily bucket")
     return document, True
 
 

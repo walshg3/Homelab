@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 from tempfile import TemporaryDirectory
 import threading
 import unittest
@@ -165,6 +166,7 @@ class PublisherStateTests(unittest.TestCase):
         for item in state.components:
             self.assertEqual(item.health.base_state, "no-data")
             self.assertIsNone(item.auto_outage_started_at)
+            self.assertEqual(item.availability_days, ())
         with self.assertRaises(FrozenInstanceError):
             state.generated_at = "2026-07-20T12:00:00Z"
         with self.assertRaises(TypeError):
@@ -174,7 +176,11 @@ class PublisherStateTests(unittest.TestCase):
         restored = restore_publisher_state(projection)
         self.assertEqual(restored, state)
         projection["components"][0]["health"]["base_state"] = "outage"
+        projection["components"][0]["availability_days"].append(
+            {"date": "2026-07-20", "measured_seconds": 1, "available_seconds": 1}
+        )
         self.assertEqual(state.components[0].health.base_state, "no-data")
+        self.assertEqual(state.components[0].availability_days, ())
         self.assertEqual(restore_publisher_state(state.to_document()), state)
         reordered = state.to_document()
         reordered["components"].reverse()
@@ -221,6 +227,41 @@ class PublisherStateTests(unittest.TestCase):
             "2026-07-20T12:00:01Z"
         )
         malformed.append(future_outage)
+
+        availability_valid = self.state_document("operational", (2, 0, 0))
+        availability_valid["components"][0]["availability_days"] = [
+            {"date": "2026-07-20", "measured_seconds": 60, "available_seconds": 60}
+        ]
+        availability_mutations = []
+        for mutation in (
+            lambda days: days[0].update(extra=1),
+            lambda days: days[0].update(measured_seconds=True),
+            lambda days: days[0].update(available_seconds=False),
+            lambda days: days[0].update(date="2026-07-21"),
+            lambda days: days.append(deepcopy(days[0])),
+            lambda days: days[0].update(measured_seconds=86401),
+            lambda days: days[0].update(available_seconds=61),
+        ):
+            candidate = deepcopy(availability_valid)
+            mutation(candidate["components"][0]["availability_days"])
+            availability_mutations.append(candidate)
+        reversed_days = deepcopy(availability_valid)
+        reversed_days["components"][0]["availability_days"] = [
+            {"date": "2026-07-19", "measured_seconds": 1, "available_seconds": 1},
+            {"date": "2026-07-18", "measured_seconds": 1, "available_seconds": 1},
+        ]
+        availability_mutations.append(reversed_days)
+        too_many_days = deepcopy(availability_valid)
+        too_many_days["components"][0]["availability_days"] = [
+            {
+                "date": (datetime(2026, 1, 1, tzinfo=UTC).date() + timedelta(days=offset)).isoformat(),
+                "measured_seconds": 1,
+                "available_seconds": 1,
+            }
+            for offset in range(91)
+        ]
+        availability_mutations.append(too_many_days)
+        malformed.extend(availability_mutations)
 
         for document in malformed:
             with self.subTest(document=document):
@@ -290,6 +331,40 @@ class PublisherStateTests(unittest.TestCase):
                                 base_state, streaks, maintenance=maintenance
                             )
                         )
+
+    def test_restored_availability_is_recursive_immutable_with_fresh_projections(self):
+        document = self.state_document("operational", (2, 0, 0))
+        document["components"][0]["availability_days"] = [
+            {"date": "2026-07-20", "measured_seconds": 60, "available_seconds": 59}
+        ]
+        restored = restore_publisher_state(document)
+        self.assertEqual(
+            restored.components[0].availability_days,
+            (("2026-07-20", 60, 59),),
+        )
+        with self.assertRaises(TypeError):
+            restored.components[0].availability_days[0][1] = 0
+
+        first = restored.to_document()
+        first["components"][0]["availability_days"][0]["measured_seconds"] = 0
+        second = restored.to_document()
+        self.assertEqual(
+            second["components"][0]["availability_days"],
+            [{"date": "2026-07-20", "measured_seconds": 60, "available_seconds": 59}],
+        )
+
+    def test_restore_accepts_exact_cutoff_and_rejects_out_of_window_availability(self):
+        document = self.state_document("operational", (2, 0, 0))
+        record = {"date": "2026-04-22", "measured_seconds": 1, "available_seconds": 1}
+        document["components"][0]["availability_days"] = [record]
+        restored = restore_publisher_state(document)
+        self.assertEqual(restored.components[0].availability_days[0][0], "2026-04-22")
+
+        document["components"][0]["availability_days"] = [
+            {**record, "date": "2026-04-21"}
+        ]
+        with self.assertRaises(ValueError):
+            restore_publisher_state(document)
 
 
 class PurePublishCycleTests(unittest.TestCase):
@@ -514,7 +589,8 @@ class PurePublishCycleTests(unittest.TestCase):
         for component in cycle.history_document["components"]:
             self.assertEqual(component["days"], [{"date": "2026-07-20", "state": "no-data"}])
         for component in cycle.summary_document["components"]:
-            self.assertIsNone(component["uptime_90d_pct"])
+            self.assertIsNone(component["availability_90d_pct"])
+            self.assertEqual(component["availability_seconds_measured"], 0)
             self.assertEqual(component["history_days_available"], 0)
 
         days = [
@@ -531,12 +607,73 @@ class PurePublishCycleTests(unittest.TestCase):
         for component in cycle.history_document["components"]:
             self.assertEqual(len(component["days"]), 90)
             self.assertEqual(component["days"][0]["date"], days[0]["date"])
-        self.assertEqual(cycle.summary_document["components"][0]["uptime_90d_pct"], 98.89)
+        self.assertIsNone(cycle.summary_document["components"][0]["availability_90d_pct"])
+        self.assertEqual(
+            cycle.summary_document["components"][0]["availability_seconds_measured"], 0
+        )
         self.assertEqual(cycle.summary_document["components"][0]["history_days_available"], 90)
 
         future = empty_history_document(at() + timedelta(seconds=1))
         with self.assertRaises(ValueError):
             run_cycle(initial_publisher_state(), future, at())
+
+    def test_first_cycle_is_unmeasured_and_second_attributes_previous_public_state(self):
+        maintenance = event(
+            "maint-2026-07-20-watch-measured",
+            kind="maintenance",
+            status="in-progress",
+        )
+        first = run_cycle(
+            self.state,
+            self.history,
+            at(),
+            probes(default="error"),
+            no_content(active=(maintenance,)),
+        )
+        first_watch = self.component(first)
+        self.assertEqual(first_watch["state"], "maintenance")
+        self.assertEqual(first_watch["availability_seconds_measured"], 0)
+        self.assertIsNone(first_watch["availability_90d_pct"])
+
+        second = run_cycle(
+            first.next_state,
+            first.history_document,
+            at(minute=1),
+            probes(default="error"),
+        )
+        second_watch = self.component(second)
+        self.assertEqual(second_watch["state"], "no-data")
+        self.assertEqual(second_watch["availability_seconds_measured"], 60)
+        self.assertEqual(second_watch["availability_90d_pct"], 100)
+
+    def test_summary_duration_comes_from_internal_days_not_daily_strip_counts(self):
+        state_document = initial_publisher_state().to_document()
+        state_document["generated_at"] = "2026-07-20T11:59:00Z"
+        for component in state_document["components"]:
+            component["availability_days"] = [
+                {
+                    "date": "2026-07-20",
+                    "measured_seconds": 60,
+                    "available_seconds": 30,
+                }
+            ]
+        state = restore_publisher_state(state_document)
+        history = empty_history_document(at(hour=11, minute=59))
+        days = [
+            {
+                "date": (at().date() - timedelta(days=offset)).isoformat(),
+                "state": "operational",
+            }
+            for offset in reversed(range(90))
+        ]
+        for component in history["components"]:
+            component["days"] = deepcopy(days)
+
+        cycle = run_cycle(state, history, at(), probes(default="error"))
+        watch = self.component(cycle)
+        self.assertEqual(watch["availability_seconds_measured"], 60)
+        self.assertEqual(watch["availability_90d_pct"], 50)
+        self.assertEqual(watch["history_days_available"], 90)
 
     def test_non_initial_state_and_history_must_share_the_same_generation(self):
         first = run_cycle(self.state, self.history, at())
@@ -572,6 +709,58 @@ class PurePublishCycleTests(unittest.TestCase):
             ],
         )
         self.assertEqual(cycle.next_state.components[0].health.success_streak, 1)
+
+    def test_sparse_prior_evidence_is_pruned_and_renderer_accepts_python_output(self):
+        prior_generated = datetime(2026, 1, 1, 12, tzinfo=UTC)
+        generated = datetime(2026, 4, 1, 12, tzinfo=UTC)
+        state_document = initial_publisher_state().to_document()
+        state_document["generated_at"] = "2026-01-01T12:00:00Z"
+        for component in state_document["components"]:
+            component["availability_days"] = [
+                {"date": "2025-10-04", "measured_seconds": 60, "available_seconds": 60}
+            ]
+        state = restore_publisher_state(state_document)
+        history = empty_history_document(prior_generated)
+        for component in history["components"]:
+            component["days"] = [
+                {"date": "2025-10-04", "state": "operational"},
+                {"date": "2026-01-01", "state": "no-data"},
+            ]
+
+        cycle = run_cycle(state, history, generated)
+
+        for component in cycle.summary_document["components"]:
+            self.assertEqual(component["availability_seconds_measured"], 0)
+            self.assertIsNone(component["availability_90d_pct"])
+        for component in cycle.history_document["components"]:
+            self.assertEqual(
+                component["days"],
+                [{"date": "2026-04-01", "state": "no-data"}],
+            )
+        validate_history(cycle.history_document)
+
+        script = (
+            'const fs = require("fs");'
+            'const renderer = require("./web/status.js");'
+            'const input = JSON.parse(fs.readFileSync(0, "utf8"));'
+            'const model = renderer.buildViewModel('
+            'input.summary, input.history, Date.parse(input.summary.generated_at));'
+            'process.stdout.write(JSON.stringify(model.components.map((item) => item.marks.length)));'
+        )
+        completed = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            input=json.dumps(
+                {
+                    "summary": cycle.summary_document,
+                    "history": cycle.history_document,
+                }
+            ),
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        self.assertEqual(json.loads(completed.stdout), [90] * len(COMPONENTS))
 
     def test_closed_archive_includes_exact_90_day_boundary_and_orders(self):
         boundary = at() - timedelta(days=90)
@@ -1112,12 +1301,19 @@ class LocalOnlySourceTests(unittest.TestCase):
                 self.assertNotIn(token, publisher.lower())
 
     def test_new_source_ast_restricts_imports_dynamic_loading_and_execution(self):
-        paths = (ROOT / "publisher" / "probes.py", ROOT / "publisher" / "publisher.py")
+        paths = (
+            ROOT / "publisher" / "availability.py",
+            ROOT / "publisher" / "probes.py",
+            ROOT / "publisher" / "publisher.py",
+        )
         common_imports = {
             "__future__", "dataclasses", "errno", "json", "os", "stat",
             "publisher.privacy", "publisher.schema", "publisher.statemachine",
         }
         allowed_by_file = {
+            "availability.py": {
+                "dataclasses", "datetime", "decimal", "publisher.schema"
+            },
             "probes.py": common_imports
             | {
                 "ipaddress", "math", "re", "signal", "ssl", "threading", "time", "tomllib",
@@ -1128,7 +1324,7 @@ class LocalOnlySourceTests(unittest.TestCase):
             | {
                 "argparse", "datetime", "fcntl", "pathlib", "secrets", "sys",
                 "time", "publisher.content", "publisher.history",
-                "publisher.probes",
+                "publisher.probes", "publisher.availability",
             },
         }
         forbidden_import_roots = {

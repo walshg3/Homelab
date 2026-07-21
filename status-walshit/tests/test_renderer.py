@@ -49,7 +49,10 @@ class RendererPureFunctionTests(unittest.TestCase):
             'const summary = require("./fixtures/summary.incident.json");'
             'const history = require("./fixtures/history.sample.json");'
             "const accepts = (fn) => { try { fn(); return true; } catch (_) { return false; } };"
-            "const wrongVersion = structuredClone(summary); wrongVersion.schema_version = \"2\";"
+            "const wrongVersion = structuredClone(summary); wrongVersion.schema_version = \"1\";"
+            "const oldField = structuredClone(summary);"
+            "oldField.components[0].uptime_90d_pct = oldField.components[0].availability_90d_pct;"
+            "delete oldField.components[0].availability_90d_pct;"
             "const missingComponent = structuredClone(summary); missingComponent.components.pop();"
             "const unknownHistory = structuredClone(history); unknownHistory.components[0].id = \"other\";"
             "const mismatchedHistory = structuredClone(history); mismatchedHistory.components[0].name = \"Home base\";"
@@ -62,6 +65,7 @@ class RendererPureFunctionTests(unittest.TestCase):
             "accepts(() => renderer.validateSummary(summary)),"
             "accepts(() => renderer.validateHistory(history)),"
             "accepts(() => renderer.validateSummary(wrongVersion)),"
+            "accepts(() => renderer.validateSummary(oldField)),"
             "accepts(() => renderer.validateSummary(missingComponent)),"
             "accepts(() => renderer.validateHistory(unknownHistory)),"
             "accepts(() => renderer.validateHistory(mismatchedHistory)),"
@@ -69,7 +73,7 @@ class RendererPureFunctionTests(unittest.TestCase):
             "accepts(() => renderer.validateSummary(unorderedEvent))"
             "]; })()"
         )
-        self.assertEqual(result, [True, True, False, False, False, False, False, False])
+        self.assertEqual(result, [True, True, False, False, False, False, False, False, False])
 
     def test_no_data_summary_builds_unverified_view_model(self):
         result = run_renderer(
@@ -132,7 +136,7 @@ class RendererPureFunctionTests(unittest.TestCase):
             "ids: model.components.map((component) => component.id),"
             "lengths: model.components.map((component) => component.marks.length),"
             "watchStates: model.components[0].marks.map((mark) => mark.state),"
-            "watchMeta: model.components[0].uptimeLabel,"
+            "watchMeta: model.components[0].availabilityLabel,"
             "watchSummary: model.components[0].historySummary,"
             "overall: model.overall.presentation, stale: model.stale"
             "}; })()"
@@ -144,10 +148,13 @@ class RendererPureFunctionTests(unittest.TestCase):
             result["watchStates"][-5:],
             ["no-data", "no-data", "operational", "operational", "outage"],
         )
-        self.assertEqual(result["watchMeta"], "66.67% uptime · 3 days on record")
+        self.assertEqual(
+            result["watchMeta"],
+            "99.875% measured availability · 3d 4h measured · 3 days on record",
+        )
         self.assertEqual(
             result["watchSummary"],
-            "90-day availability strip for Watch: 3 days measured; newest recorded state Outage.",
+            "90-day availability strip for Watch: 3 days with recorded states; newest recorded state Outage.",
         )
         self.assertEqual(result["overall"], {"label": "Outage", "className": "state-outage"})
         self.assertEqual(result["stale"], {"summary": False, "history": False, "any": False})
@@ -210,18 +217,44 @@ class RendererPureFunctionTests(unittest.TestCase):
             ["Public playback checks are not completing consistently."],
         )
 
-    def test_null_uptime_is_omitted_and_stale_sources_are_calculated_independently(self):
+    def test_unmeasured_availability_copy_and_stale_sources_are_independent(self):
         result = run_renderer(
             "(() => {"
             'const summary = structuredClone(require("./fixtures/summary.operational.json"));'
             'const history = require("./fixtures/history.sample.json");'
-            "summary.components[0].uptime_90d_pct = null;"
+            "summary.components[0].availability_90d_pct = null;"
+            "summary.components[0].availability_seconds_measured = 0;"
             'const model = renderer.buildViewModel(summary, history, Date.parse("2026-07-19T14:45:00.001Z"));'
-            "return {label: model.components[0].uptimeLabel, stale: model.stale};"
+            "return {label: model.components[0].availabilityLabel, stale: model.stale};"
             "})()"
         )
-        self.assertEqual(result["label"], "3 days on record")
+        self.assertEqual(
+            result["label"],
+            "3 days on record · measured availability unavailable",
+        )
         self.assertEqual(result["stale"], {"summary": True, "history": False, "any": True})
+
+    def test_measured_duration_format_is_deterministic_and_bounded(self):
+        result = run_renderer(
+            "(() => {"
+            'const summary = structuredClone(require("./fixtures/summary.operational.json"));'
+            'const history = require("./fixtures/history.sample.json");'
+            "const label = (seconds) => {"
+            "summary.components[0].availability_seconds_measured = seconds;"
+            "return renderer.buildViewModel(summary, history, Date.parse(summary.generated_at))"
+            ".components[0].availabilityLabel;"
+            "};"
+            "return [label(60), label(273600), label(7776000)];"
+            "})()"
+        )
+        self.assertEqual(
+            result,
+            [
+                "100% measured availability · 1m measured · 3 days on record",
+                "100% measured availability · 3d 4h measured · 3 days on record",
+                "100% measured availability · 90d measured · 3 days on record",
+            ],
+        )
 
     def test_view_model_fingerprint_deduplicates_equivalent_models_but_not_stale_transitions(self):
         result = run_renderer(

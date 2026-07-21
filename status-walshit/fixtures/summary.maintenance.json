@@ -1,5 +1,5 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "generated_at": "2026-07-19T14:30:00Z",
   "overall": {
     "state": "maintenance",
@@ -12,7 +12,8 @@
       "name": "Watch",
       "description": "Plex playback and sign-in",
       "state": "operational",
-      "uptime_90d_pct": 100.0,
+      "availability_90d_pct": 100,
+      "availability_seconds_measured": 259200,
       "history_days_available": 3
     },
     {
@@ -20,7 +21,8 @@
       "name": "Home base",
       "description": "Dashboard and links",
       "state": "maintenance",
-      "uptime_90d_pct": 100.0,
+      "availability_90d_pct": 100,
+      "availability_seconds_measured": 259200,
       "history_days_available": 3
     },
     {
@@ -28,7 +30,8 @@
       "name": "Requests",
       "description": "Film and series requests",
       "state": "maintenance",
-      "uptime_90d_pct": 100.0,
+      "availability_90d_pct": 100,
+      "availability_seconds_measured": 259200,
       "history_days_available": 3
     },
     {
@@ -36,7 +39,8 @@
       "name": "Audiobooks",
       "description": "Listening and library access",
       "state": "operational",
-      "uptime_90d_pct": 100.0,
+      "availability_90d_pct": 100,
+      "availability_seconds_measured": 259200,
       "history_days_available": 3
     },
     {
@@ -44,7 +48,8 @@
       "name": "Walshit.com",
       "description": "Updates and guides",
       "state": "operational",
-      "uptime_90d_pct": 100.0,
+      "availability_90d_pct": 100,
+      "availability_seconds_measured": 259200,
       "history_days_available": 3
     }
   ],

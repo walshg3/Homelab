@@ -211,7 +211,7 @@ class ContentLoaderTests(unittest.TestCase):
         self.assertNotIn("severity", result.closed_event_documents()[0])
         validate_incidents(
             {
-                "schema_version": "1",
+                "schema_version": "2",
                 "generated_at": "2026-07-20T13:00:00Z",
                 "events": result.closed_event_documents(),
             }
@@ -550,7 +550,7 @@ class ContentLoaderTests(unittest.TestCase):
         validate_summary(summary)
         validate_incidents(
             {
-                "schema_version": "1",
+                "schema_version": "2",
                 "generated_at": "2026-07-21T00:00:00Z",
                 "events": result.closed_event_documents(),
             }

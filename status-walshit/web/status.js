@@ -10,8 +10,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
   "use strict";
 
-  const SUMMARY_PATH = "/status/v1/summary.json";
-  const HISTORY_PATH = "/status/v1/history.json";
+  const SUMMARY_PATH = "/status/v2/summary.json";
+  const HISTORY_PATH = "/status/v2/history.json";
   const REFRESH_INTERVAL_MS = 60_000;
   const FETCH_TIMEOUT_MS = 10_000;
   const STALE_AFTER_MS = 180_000;
@@ -109,7 +109,7 @@
     requireCondition(hasExactKeys(summary, [
       "schema_version", "generated_at", "overall", "components", "active_events",
     ]));
-    requireCondition(summary.schema_version === "1" && isTimestamp(summary.generated_at));
+    requireCondition(summary.schema_version === "2" && isTimestamp(summary.generated_at));
     requireCondition(hasExactKeys(summary.overall, ["state", "headline", "body"]));
     requireCondition(PUBLIC_STATES.has(summary.overall.state));
     requireCondition(isText(summary.overall.headline) && isText(summary.overall.body));
@@ -117,13 +117,24 @@
     const ids = [];
     summary.components.forEach((component) => {
       requireCondition(hasExactKeys(component, [
-        "id", "name", "description", "state", "uptime_90d_pct", "history_days_available",
+        "id", "name", "description", "state", "availability_90d_pct",
+        "availability_seconds_measured", "history_days_available",
       ]));
       requireCondition(registryName(component.id) === component.name && isText(component.description));
       requireCondition(PUBLIC_STATES.has(component.state));
-      requireCondition(component.uptime_90d_pct === null ||
-        (typeof component.uptime_90d_pct === "number" && Number.isFinite(component.uptime_90d_pct) &&
-          component.uptime_90d_pct >= 0 && component.uptime_90d_pct <= 100));
+      requireCondition(component.availability_90d_pct === null ||
+        (typeof component.availability_90d_pct === "number" &&
+          Number.isFinite(component.availability_90d_pct) &&
+          component.availability_90d_pct >= 0 && component.availability_90d_pct <= 100));
+      requireCondition(component.availability_90d_pct === null || Math.abs(
+        (component.availability_90d_pct * 1000) -
+        Math.round(component.availability_90d_pct * 1000)
+      ) < 1e-9);
+      requireCondition(Number.isInteger(component.availability_seconds_measured) &&
+        component.availability_seconds_measured >= 0 &&
+        component.availability_seconds_measured <= 7_776_000);
+      requireCondition((component.availability_90d_pct === null) ===
+        (component.availability_seconds_measured === 0));
       requireCondition(Number.isInteger(component.history_days_available) &&
         component.history_days_available >= 0 && component.history_days_available <= 90);
       ids.push(component.id);
@@ -139,7 +150,7 @@
 
   function validateHistory(history) {
     requireCondition(hasExactKeys(history, ["schema_version", "generated_at", "components"]));
-    requireCondition(history.schema_version === "1" && isTimestamp(history.generated_at));
+    requireCondition(history.schema_version === "2" && isTimestamp(history.generated_at));
     requireCondition(Array.isArray(history.components) && history.components.length === COMPONENT_REGISTRY.length);
     const ids = [];
     history.components.forEach((component) => {
@@ -160,7 +171,19 @@
   }
 
   function formatPercentage(value) {
-    return Number.isInteger(value) ? String(value) : String(value);
+    return String(value);
+  }
+
+  function formatMeasuredDuration(totalSeconds) {
+    requireCondition(Number.isInteger(totalSeconds) && totalSeconds >= 0 && totalSeconds <= 7_776_000);
+    const days = Math.floor(totalSeconds / 86_400);
+    const hours = Math.floor((totalSeconds % 86_400) / 3_600);
+    const minutes = Math.floor((totalSeconds % 3_600) / 60);
+    const seconds = totalSeconds % 60;
+    if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+    if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+    if (minutes > 0) return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+    return `${seconds}s`;
   }
 
   function calendarWindow(generatedAt) {
@@ -201,11 +224,12 @@
         ...component,
         presentation: STATE_PRESENTATIONS[component.state],
         marks,
-        uptimeLabel: component.uptime_90d_pct === null
-          ? periodLabel
-          : `${formatPercentage(component.uptime_90d_pct)}% uptime · ${periodLabel}`,
+        availabilityLabel: component.availability_90d_pct === null
+          ? `${periodLabel} · measured availability unavailable`
+          : `${formatPercentage(component.availability_90d_pct)}% measured availability · ` +
+            `${formatMeasuredDuration(component.availability_seconds_measured)} measured · ${periodLabel}`,
         historySummary: `90-day availability strip for ${component.name}: ${measuredDays} ` +
-          `${measuredDays === 1 ? "day" : "days"} measured; newest recorded state ` +
+          `${measuredDays === 1 ? "day" : "days"} with recorded states; newest recorded state ` +
           `${STATE_PRESENTATIONS[latest?.state || "no-data"].label}.`,
       });
     });
@@ -287,7 +311,7 @@
       strip.appendChild(item);
     });
     container.appendChild(strip);
-    container.appendChild(createElement(document, "span", "history-meta", component.uptimeLabel));
+    container.appendChild(createElement(document, "span", "history-meta", component.availabilityLabel));
   }
 
   function renderComponent(document, component) {
@@ -339,7 +363,7 @@
       document,
       "p",
       "eyebrow event-status",
-      `${statusLabel} · Severity not specified by v1 contract`,
+      `${statusLabel} · Severity not specified by v2 contract`,
     ));
     const title = createElement(document, "h3", "event-title", event.title);
     title.id = titleId;
@@ -439,7 +463,7 @@
       description,
       presentation: STATE_PRESENTATIONS["no-data"],
       marks: Array.from({length: 90}, () => ({date: null, state: "no-data"})),
-      uptimeLabel: "Measured period unavailable",
+      availabilityLabel: "Measured availability unavailable",
       historySummary: `90-day availability strip for ${name}: data unavailable.`,
     };
   }

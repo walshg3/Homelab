@@ -26,6 +26,37 @@ class SummaryContractTests(unittest.TestCase):
     def test_operational_fixture_validates(self):
         validate_summary(deepcopy(self.operational))
 
+    def test_v2_rejects_removed_uptime_field_and_enforces_measurement_pair(self):
+        old_field = deepcopy(self.operational)
+        component = old_field["components"][0]
+        component["uptime_90d_pct"] = component.pop("availability_90d_pct")
+        with self.assertRaises(SchemaError):
+            validate_summary(old_field)
+
+        malformed = []
+        zero_with_percentage = deepcopy(self.operational)
+        zero_with_percentage["components"][0]["availability_seconds_measured"] = 0
+        malformed.append(zero_with_percentage)
+        measured_without_percentage = deepcopy(self.operational)
+        measured_without_percentage["components"][0]["availability_90d_pct"] = None
+        malformed.append(measured_without_percentage)
+        boolean_seconds = deepcopy(self.operational)
+        boolean_seconds["components"][0]["availability_seconds_measured"] = True
+        malformed.append(boolean_seconds)
+        excessive_seconds = deepcopy(self.operational)
+        excessive_seconds["components"][0]["availability_seconds_measured"] = 7_776_001
+        malformed.append(excessive_seconds)
+        nonfinite = deepcopy(self.operational)
+        nonfinite["components"][0]["availability_90d_pct"] = float("nan")
+        malformed.append(nonfinite)
+        excessive_precision = deepcopy(self.operational)
+        excessive_precision["components"][0]["availability_90d_pct"] = 99.9999
+        malformed.append(excessive_precision)
+        for document in malformed:
+            with self.subTest(document=document):
+                with self.assertRaises(SchemaError):
+                    validate_summary(document)
+
     def test_component_descriptions_are_canonical(self):
         self.assertEqual(
             COMPONENT_DESCRIPTIONS,
@@ -187,6 +218,32 @@ class SummaryContractTests(unittest.TestCase):
                     validate_summary(document)
 
 
+class PublicVersionContractTests(unittest.TestCase):
+    def test_v2_fixtures_pass_and_v1_public_documents_fail(self):
+        summary = json.loads(
+            (FIXTURES / "summary.operational.json").read_text(encoding="utf-8")
+        )
+        history = json.loads(
+            (FIXTURES / "history.sample.json").read_text(encoding="utf-8")
+        )
+        incidents = {
+            "schema_version": "2",
+            "generated_at": summary["generated_at"],
+            "events": [],
+        }
+        for validator, document in (
+            (validate_summary, summary),
+            (validate_history, history),
+            (validate_incidents, incidents),
+        ):
+            validator(deepcopy(document))
+            old = deepcopy(document)
+            old["schema_version"] = "1"
+            with self.subTest(validator=validator.__name__):
+                with self.assertRaises(SchemaError):
+                    validator(old)
+
+
 class HistoryContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -204,7 +261,7 @@ class HistoryContractTests(unittest.TestCase):
             "site": "Walshit.com",
         }
         return {
-            "schema_version": "1",
+            "schema_version": "2",
             "generated_at": "2026-07-19T14:42:00Z",
             "components": [
                 {
@@ -294,7 +351,7 @@ class IncidentsContractTests(unittest.TestCase):
     @staticmethod
     def valid_document():
         return {
-            "schema_version": "1",
+            "schema_version": "2",
             "generated_at": "2026-07-20T13:00:00Z",
             "events": [
                 {
@@ -365,7 +422,7 @@ class IncidentsContractTests(unittest.TestCase):
         mutations.append(missing_root)
 
         bad_version = deepcopy(valid)
-        bad_version["schema_version"] = "2"
+        bad_version["schema_version"] = "1"
         mutations.append(bad_version)
 
         bad_generated = deepcopy(valid)
@@ -614,11 +671,11 @@ class FixtureSafetyTests(unittest.TestCase):
         mutations.append(invalid_component_state)
 
         percentage_too_high = deepcopy(self.operational)
-        percentage_too_high["components"][0]["uptime_90d_pct"] = 100.01
+        percentage_too_high["components"][0]["availability_90d_pct"] = 100.01
         mutations.append(percentage_too_high)
 
         negative_percentage = deepcopy(self.operational)
-        negative_percentage["components"][0]["uptime_90d_pct"] = -0.01
+        negative_percentage["components"][0]["availability_90d_pct"] = -0.01
         mutations.append(negative_percentage)
 
         too_many_days = deepcopy(self.operational)
