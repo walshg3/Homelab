@@ -50,8 +50,9 @@ stopped, but it must not be removed, downed, or pruned without explicit scoped
 approval. Only the gateway in the `-v2` project owns loopback port 3015; the
 core web and publisher continue to publish no port.
 
-These commands are documented for a host-side operator; this repository slice
-does not claim that a live build or run has occurred. See
+These commands remain documented for a host-side operator. An isolated,
+loopback-only staging acceptance was completed on 2026-07-22. No push, public
+deployment, DNS, Cloudflare, tunnel, or production cutover occurred. See
 `runbooks/operations.md` for secret preparation, acceptance checks, recovery,
 and rollback.
 

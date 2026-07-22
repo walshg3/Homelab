@@ -213,7 +213,7 @@ class WebSourceTests(unittest.TestCase):
             'id="overall-state-label"',
             'id="generated-at"',
             'id="active-board"',
-            "Archived incident data is not available yet because no archive contract is loaded.",
+            "Archived incident data is unavailable because no archive contract is loaded.",
             "Live status rendering requires JavaScript.",
             '<noscript>',
             '<a href="https://walshit.com/">Return to Walshit.com</a>',
@@ -268,8 +268,10 @@ class WebSourceTests(unittest.TestCase):
             'class="history-section" id="history"',
             'class="coverage"',
             "No active-event data is available yet.",
-            "No past availability or incident record is claimed by this shell.",
-            "This source shell is not connected to monitoring yet.",
+            "Current conditions are unverified until loading completes.",
+            "Measured availability and missing data are shown separately",
+            "missing periods are never filled with invented history",
+            "This report covers public availability and incidents",
         )
         for item in required:
             with self.subTest(item=item):
@@ -298,8 +300,36 @@ class WebSourceTests(unittest.TestCase):
         self.assertIn('id="history"', self.html)
         self.assertIn("No active-event data is available yet.", self.html)
         self.assertIn("No archived incidents are loaded.", self.html)
+        self.assertIn("Availability history uses measured records only.", self.html)
         self.assertNotIn("History will appear after monitoring begins.", self.html)
         self.assertNotRegex(self.html, r"\b\d{2,3}\.\d{1,2}%|90 days ago")
+
+    def test_static_copy_remains_truthful_across_initial_success_and_failure_states(self):
+        contradictory = (
+            "No current condition is asserted here.",
+            "No past availability or incident record is claimed",
+            "Future reports cover",
+            "This source shell is not connected to monitoring yet.",
+            "Publishing has not begun",
+            "after the status publisher is connected",
+        )
+        for statement in contradictory:
+            with self.subTest(statement=statement):
+                self.assertNotIn(statement, self.html)
+
+    def test_staging_acceptance_docs_state_completed_scope_and_unchanged_boundaries(self):
+        for relative_path in ("README.md", "runbooks/operations.md"):
+            document = (ROOT / relative_path).read_text(encoding="utf-8")
+            compact = re.sub(r"\s+", " ", document)
+            with self.subTest(path=relative_path):
+                self.assertIn(
+                    "isolated, loopback-only staging acceptance was completed on 2026-07-22",
+                    compact,
+                )
+                self.assertIn(
+                    "No push, public deployment, DNS, Cloudflare, tunnel, or production cutover occurred.",
+                    compact,
+                )
 
     def test_house_report_content_css_remains_present(self):
         self.assertIn(".component-ledger", self.css)

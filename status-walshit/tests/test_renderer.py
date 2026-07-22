@@ -11,7 +11,8 @@ def run_renderer(expression):
     script = (
         'const renderer = require("./web/status.js");'
         f"const result = ({expression});"
-        "process.stdout.write(JSON.stringify(result));"
+        "Promise.resolve(result).then((value) => process.stdout.write(JSON.stringify(value)))"
+        ".catch((error) => { process.stderr.write(String(error)); process.exitCode = 1; });"
     )
     completed = subprocess.run(
         ["node", "-e", script],
@@ -75,11 +76,116 @@ class RendererPureFunctionTests(unittest.TestCase):
         )
         self.assertEqual(result, [True, True, False, False, False, False, False, False, False])
 
+    def test_view_model_rejects_individually_valid_documents_from_unequal_generations(self):
+        result = run_renderer(
+            "(() => {"
+            'const summary = require("./fixtures/summary.operational.json");'
+            'const history = require("./fixtures/history.sample.json");'
+            "const accepts = (fn) => { try { fn(); return true; } catch (_) { return false; } };"
+            "return {"
+            "summary: accepts(() => renderer.validateSummary(summary)),"
+            "history: accepts(() => renderer.validateHistory(history)),"
+            "pair: accepts(() => renderer.buildViewModel(summary, history, Date.parse(history.generated_at)))"
+            "};"
+            "})()"
+        )
+        self.assertEqual(result, {"summary": True, "history": True, "pair": False})
+
+    def test_bootstrap_renders_unavailable_for_unequal_generations(self):
+        result = run_renderer(
+            """(async () => {
+            class FakeClassList {
+              constructor() { this.values = new Set(); }
+              add(...names) { names.forEach((name) => this.values.add(name)); }
+              remove(...names) { names.forEach((name) => this.values.delete(name)); }
+            }
+            class FakeNode {
+              constructor(text = "") {
+                this.textContent = text;
+                this.hidden = true;
+                this.children = [];
+                this.firstChild = null;
+                this.className = "";
+                this.classList = new FakeClassList();
+                this.attributes = {};
+                this.queries = {};
+              }
+              appendChild(child) {
+                this.children.push(child);
+                this.firstChild = this.children[0] || null;
+                return child;
+              }
+              removeChild(child) {
+                this.children.splice(this.children.indexOf(child), 1);
+                this.firstChild = this.children[0] || null;
+              }
+              setAttribute(name, value) { this.attributes[name] = String(value); }
+              querySelector(selector) { return this.queries[selector]; }
+            }
+            const byId = Object.fromEntries([
+              "load-error", "stale-warning", "overall-state-label", "overall-title",
+              "generated-at", "active-board",
+            ].map((id) => [id, new FakeNode()]));
+            const document = {
+              readyState: "complete",
+              body: new FakeNode(),
+              createElement: () => new FakeNode(),
+              getElementById: (id) => byId[id],
+              queries: {
+                ".overall": new FakeNode(),
+                ".overall-copy": new FakeNode(),
+                ".active-section .section-head > p": new FakeNode(),
+              },
+              querySelector(selector) { return this.queries[selector]; },
+            };
+            renderer.COMPONENT_REGISTRY.forEach(({id, name}) => {
+              const row = new FakeNode();
+              row.queries = {
+                "h3": new FakeNode(name),
+                ".component-name p": new FakeNode(`${name} description`),
+                ".history-placeholder": new FakeNode(),
+                ".current-state": new FakeNode(),
+              };
+              document.queries[`[data-component="${id}"]`] = row;
+            });
+            const summary = require("./fixtures/summary.operational.json");
+            const history = require("./fixtures/history.sample.json");
+            const responses = {"/status/v2/summary.json": summary, "/status/v2/history.json": history};
+            const windowObject = {
+              document,
+              AbortController,
+              __STATUS_NOW_MS__: Date.parse(history.generated_at),
+              fetch: async (path) => ({ok: true, json: async () => structuredClone(responses[path])}),
+              setTimeout: () => 1,
+              clearTimeout: () => {},
+              setInterval: () => 1,
+            };
+            renderer.bootstrap(windowObject);
+            await new Promise((resolve) => setImmediate(resolve));
+            return {
+              render: document.body.attributes["data-status-render"],
+              errorVisible: byId["load-error"].hidden === false,
+              label: byId["overall-state-label"].textContent,
+              title: byId["overall-title"].textContent,
+            };
+            })()"""
+        )
+        self.assertEqual(
+            result,
+            {
+                "render": "unavailable",
+                "errorVisible": True,
+                "label": "No data",
+                "title": "Status unavailable.",
+            },
+        )
+
     def test_no_data_summary_builds_unverified_view_model(self):
         result = run_renderer(
             "(() => {"
             'const summary = structuredClone(require("./fixtures/summary.operational.json"));'
-            'const history = require("./fixtures/history.sample.json");'
+            'const history = structuredClone(require("./fixtures/history.sample.json"));'
+            'history.generated_at = summary.generated_at;'
             'summary.overall.state = "no-data";'
             'summary.components[0].state = "no-data";'
             "const model = renderer.buildViewModel(summary, history, Date.parse(summary.generated_at));"
@@ -200,7 +306,9 @@ class RendererPureFunctionTests(unittest.TestCase):
             'const names = ["operational", "incident", "maintenance"];'
             "return names.map((name) => {"
             "const summary = require(`./fixtures/summary.${name}.json`);"
-            "const model = renderer.buildViewModel(summary, history, Date.parse(summary.generated_at));"
+            "const matchingHistory = structuredClone(history);"
+            "matchingHistory.generated_at = summary.generated_at;"
+            "const model = renderer.buildViewModel(summary, matchingHistory, Date.parse(summary.generated_at));"
             "return {name, state: model.overall.state, events: model.activeEvents.map((event) => ({"
             "kind: event.kind, status: event.status, title: event.title,"
             "updates: event.updates.map((update) => update.body)"
@@ -217,11 +325,12 @@ class RendererPureFunctionTests(unittest.TestCase):
             ["Public playback checks are not completing consistently."],
         )
 
-    def test_unmeasured_availability_copy_and_stale_sources_are_independent(self):
+    def test_unmeasured_availability_copy_and_matching_generation_staleness(self):
         result = run_renderer(
             "(() => {"
             'const summary = structuredClone(require("./fixtures/summary.operational.json"));'
-            'const history = require("./fixtures/history.sample.json");'
+            'const history = structuredClone(require("./fixtures/history.sample.json"));'
+            'history.generated_at = summary.generated_at;'
             "summary.components[0].availability_90d_pct = null;"
             "summary.components[0].availability_seconds_measured = 0;"
             'const model = renderer.buildViewModel(summary, history, Date.parse("2026-07-19T14:45:00.001Z"));'
@@ -232,13 +341,14 @@ class RendererPureFunctionTests(unittest.TestCase):
             result["label"],
             "3 days on record · measured availability unavailable",
         )
-        self.assertEqual(result["stale"], {"summary": True, "history": False, "any": True})
+        self.assertEqual(result["stale"], {"summary": True, "history": True, "any": True})
 
     def test_measured_duration_format_is_deterministic_and_bounded(self):
         result = run_renderer(
             "(() => {"
             'const summary = structuredClone(require("./fixtures/summary.operational.json"));'
-            'const history = require("./fixtures/history.sample.json");'
+            'const history = structuredClone(require("./fixtures/history.sample.json"));'
+            'history.generated_at = summary.generated_at;'
             "const label = (seconds) => {"
             "summary.components[0].availability_seconds_measured = seconds;"
             "return renderer.buildViewModel(summary, history, Date.parse(summary.generated_at))"
@@ -260,13 +370,14 @@ class RendererPureFunctionTests(unittest.TestCase):
         result = run_renderer(
             "(() => {"
             'const summary = require("./fixtures/summary.operational.json");'
-            'const history = require("./fixtures/history.sample.json");'
-            'const fresh = renderer.buildViewModel(summary, history, Date.parse("2026-07-19T15:03:00Z"));'
+            'const history = structuredClone(require("./fixtures/history.sample.json"));'
+            'history.generated_at = summary.generated_at;'
+            'const fresh = renderer.buildViewModel(summary, history, Date.parse("2026-07-19T14:45:00Z"));'
             "const reorder = (value) => Array.isArray(value) ? value.map(reorder) : "
             "value && typeof value === \"object\" ? "
             "Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reorder(item)])) : value;"
             "const equivalent = reorder(fresh);"
-            'const stale = renderer.buildViewModel(summary, history, Date.parse("2026-07-19T15:03:00.001Z"));'
+            'const stale = renderer.buildViewModel(summary, history, Date.parse("2026-07-19T14:45:00.001Z"));'
             "return {"
             "same: renderer.fingerprintViewModel(fresh) === renderer.fingerprintViewModel(equivalent),"
             "staleChanged: renderer.fingerprintViewModel(fresh) !== renderer.fingerprintViewModel(stale)"

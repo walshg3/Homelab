@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
 FIXTURES = ROOT / "fixtures"
 CHROMIUM_CANDIDATES = ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable")
+EXPECTED_SCENARIO_COUNT = 9
 EXPECTED_REQUESTS = {
     "/",
     "/status.css",
@@ -254,7 +255,13 @@ def assert_common_valid(document, summary):
     text = NodeCollector.text(body)
     assert "3 days on record" in text
     assert "90 days on record" not in text
-    assert "Archived incident data is not available yet because no archive contract is loaded." in text
+    assert "Measured availability and missing data are shown separately" in text
+    assert "missing periods are never filled with invented history" in text
+    assert "Availability history uses measured records only." in text
+    assert "This report covers public availability and incidents" in text
+    assert "No current condition is asserted here." not in text
+    assert "No past availability or incident record is claimed" not in text
+    assert "Future reports cover" not in text
     assert not document.by_class("filed-event")
     overall = document.by_id("overall-state-label")
     expected_label = {
@@ -299,7 +306,9 @@ def run_checks():
         ("summary.maintenance.json", "2026-07-19T14:33:00Z"),
     ):
         summary = load_fixture(fixture)
-        document = render(chromium, summary, history, int(__import__("datetime").datetime.fromisoformat(clock.replace("Z", "+00:00")).timestamp() * 1000))
+        matching_history = deepcopy(history)
+        matching_history["generated_at"] = summary["generated_at"]
+        document = render(chromium, summary, matching_history, int(__import__("datetime").datetime.fromisoformat(clock.replace("Z", "+00:00")).timestamp() * 1000))
         assert_common_valid(document, summary)
         assert_hidden(document, "stale-warning")
         if summary["active_events"]:
@@ -318,6 +327,8 @@ def run_checks():
     scenarios.append("stale")
 
     no_data_summary = deepcopy(load_fixture("summary.operational.json"))
+    no_data_history = deepcopy(history)
+    no_data_history["generated_at"] = no_data_summary["generated_at"]
     no_data_summary["overall"] = {
         "state": "no-data",
         "headline": "Public status is not verified yet.",
@@ -325,7 +336,7 @@ def run_checks():
     }
     for component in no_data_summary["components"]:
         component["state"] = "no-data"
-    no_data = render(chromium, no_data_summary, history, 1784472300000)
+    no_data = render(chromium, no_data_summary, no_data_history, 1784472300000)
     assert_common_valid(no_data, no_data_summary)
     assert_hidden(no_data, "stale-warning")
     assert NodeCollector.text(no_data.by_id("overall-state-label")) == "No data"
@@ -355,6 +366,15 @@ def run_checks():
     )
     scenarios.append("invalid-schema")
 
+    mismatched_summary = load_fixture("summary.operational.json")
+    mismatched = render(chromium, mismatched_summary, history, 1784472300000)
+    assert_visible(mismatched, "load-error")
+    mismatched_body = next(node for node in mismatched.nodes if node["tag"] == "body")
+    assert mismatched_body["attrs"].get("data-status-render") == "unavailable"
+    assert NodeCollector.text(mismatched.by_id("overall-state-label")) == "No data"
+    assert "Operational" not in NodeCollector.text(mismatched_body)
+    scenarios.append("generation-mismatch")
+
     failed = render(
         chromium,
         load_fixture("summary.operational.json"),
@@ -378,6 +398,7 @@ def run_checks():
     malformed_body = next(node for node in malformed.nodes if node["tag"] == "body")
     assert malformed_body["attrs"].get("data-status-render") == "unavailable"
     scenarios.append("malformed-json")
+    assert len(scenarios) == EXPECTED_SCENARIO_COUNT
     return scenarios
 
 

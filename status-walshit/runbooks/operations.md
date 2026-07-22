@@ -93,7 +93,8 @@ docker compose -f compose.yaml -f compose.staging.yaml ps
 
 Build and startup are host-side acceptance steps. Review their output before
 continuing; never paste probe credentials into an override or retry command.
-This repository does not claim that this repair has been built or run.
+An isolated, loopback-only staging acceptance was completed on 2026-07-22. No
+push, public deployment, DNS, Cloudflare, tunnel, or production cutover occurred.
 
 ## Acceptance checks
 

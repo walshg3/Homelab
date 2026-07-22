@@ -197,6 +197,7 @@
   function buildViewModel(summary, history, nowMs) {
     validateSummary(summary);
     validateHistory(history);
+    requireCondition(summary.generated_at === history.generated_at);
     requireCondition(Number.isFinite(nowMs));
     const summaryById = new Map(summary.components.map((component) => [component.id, component]));
     const historyById = new Map(history.components.map((component) => [component.id, component]));
