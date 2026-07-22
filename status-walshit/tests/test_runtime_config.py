@@ -231,6 +231,9 @@ class RuntimeConfigurationTests(unittest.TestCase):
             "server_tokens off;", "autoindex off;", "proxy_connect_timeout 3s;",
             "proxy_read_timeout 10s;", "proxy_send_timeout 10s;",
             "proxy_buffering off;", "proxy_request_buffering off;",
+            "client_body_temp_path /tmp/client_body;", "proxy_temp_path /tmp/proxy;",
+            "fastcgi_temp_path /tmp/fastcgi;", "uwsgi_temp_path /tmp/uwsgi;",
+            "scgi_temp_path /tmp/scgi;",
             "if ($request_method !~ ^(?:GET|HEAD)$)", "return 405;",
             "include /etc/nginx/security-headers.conf;",
         ):
