@@ -5,12 +5,15 @@ from io import StringIO
 import json
 import os
 from pathlib import Path
+import signal
 import stat
 from tempfile import TemporaryDirectory
+import threading
 import unittest
 from unittest.mock import patch
 
 from publisher import runner
+from publisher import probes
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -157,6 +160,41 @@ class SecretLoaderTests(unittest.TestCase):
                 with self.assertRaises(runner.SecretFileError):
                     runner.load_secret_file(path)
 
+    def test_control_flow_during_secret_read_is_not_normalized_and_closes_fds(self):
+        for interruption in (KeyboardInterrupt(), SystemExit(23)):
+            with self.subTest(interruption=type(interruption).__name__), \
+                 TemporaryDirectory() as temporary:
+                path = write_secret(temporary)
+                directory_fds = []
+                file_fds = []
+                original_open_directory = runner._open_directory_no_follow
+
+                def open_directory(absolute_directory):
+                    directory_fd = original_open_directory(absolute_directory)
+                    directory_fds.append(directory_fd)
+                    return directory_fd
+
+                def interrupt_read(file_fd):
+                    file_fds.append(file_fd)
+                    raise interruption
+
+                with patch(
+                    "publisher.runner._open_directory_no_follow",
+                    side_effect=open_directory,
+                ), patch(
+                    "publisher.runner._read_secret_bytes",
+                    side_effect=interrupt_read,
+                ):
+                    with self.assertRaises(type(interruption)) as raised:
+                        runner.load_secret_file(path)
+
+                self.assertIs(raised.exception, interruption)
+                self.assertEqual(len(directory_fds), 1)
+                self.assertEqual(len(file_fds), 1)
+                for descriptor in directory_fds + file_fds:
+                    with self.assertRaises(OSError):
+                        os.fstat(descriptor)
+
 
 class ManualClock:
     def __init__(self):
@@ -172,8 +210,41 @@ class ManualClock:
 
 
 class ServeLoopTests(unittest.TestCase):
+    SERVE_ARGV = [
+        "serve", "--config", "cfg", "--content-root", "content",
+        "--output-dir", "output", "--state-file", "state",
+        "--secret-file", "secret", "--interval-seconds", "60",
+    ]
+
     def options(self, secret):
         return runner.ServeOptions("cfg", "content", "output", "state", os.fspath(secret), 60.0)
+
+    def invoke_main_with_fake_signal(self, serve):
+        calls = []
+        handlers = {
+            signal.SIGTERM: signal.SIG_IGN,
+            signal.SIGALRM: signal.SIG_DFL,
+        }
+        timers = []
+
+        def fake_signal(selected, handler):
+            previous = handlers[selected]
+            handlers[selected] = handler
+            calls.append((selected, handler))
+            return previous
+
+        def fake_setitimer(selected, seconds, interval=0.0):
+            timers.append((selected, seconds, interval))
+
+        stdout, stderr = StringIO(), StringIO()
+        with patch("publisher.runner.signal.signal", side_effect=fake_signal), \
+             patch("publisher.probes.signal.getsignal", side_effect=handlers.__getitem__), \
+             patch("publisher.probes.signal.getitimer", return_value=(0.0, 0.0)), \
+             patch("publisher.probes.signal.setitimer", side_effect=fake_setitimer), \
+             patch("publisher.runner.run_serve", side_effect=serve), \
+             redirect_stdout(stdout), redirect_stderr(stderr):
+            code = runner.main(self.SERVE_ARGV)
+        return code, stdout.getvalue(), stderr.getvalue(), calls, handlers, timers
 
     def test_immediate_nonoverlapping_cycles_use_exact_once_arguments(self):
         with TemporaryDirectory() as temporary:
@@ -276,6 +347,83 @@ class ServeLoopTests(unittest.TestCase):
                 runner.run_serve(self.options(secret), publish=publish)
         self.assertEqual(dict(os.environ), before)
         self.assertNotIn(CANARY_TOKEN, os.environ.values())
+
+    def test_sigterm_at_serve_entry_is_quiet_and_restores_previous_handler(self):
+        def serve(_options):
+            runner.signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+
+        code, stdout, stderr, calls, handlers, _timers = \
+            self.invoke_main_with_fake_signal(serve)
+        self.assertEqual((code, stdout, stderr), (0, "", ""))
+        self.assertEqual(calls[0][0], signal.SIGTERM)
+        self.assertIs(calls[-1][1], signal.SIG_IGN)
+        self.assertIs(handlers[signal.SIGTERM], signal.SIG_IGN)
+
+    def test_sigterm_during_publish_hard_wall_and_scheduler_sleep_returns_zero(self):
+        original_run_serve = runner.run_serve
+
+        for phase in ("publish", "sleep"):
+            with self.subTest(phase=phase), TemporaryDirectory() as temporary:
+                secret = write_secret(temporary)
+
+                def publish(_arguments, **_kwargs):
+                    if phase == "publish":
+                        with probes._HardWallTimeout(10.0):
+                            runner.signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+                    return 0
+
+                def sleep(_delay):
+                    runner.signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+
+                def serve(options):
+                    options = runner.ServeOptions(
+                        options.config, options.content_root, options.output_dir,
+                        options.state_file, os.fspath(secret), options.interval_seconds,
+                    )
+                    return original_run_serve(
+                        options,
+                        publish=publish,
+                        monotonic=lambda: 0.0,
+                        sleep=sleep,
+                    )
+
+                code, stdout, stderr, calls, handlers, timers = \
+                    self.invoke_main_with_fake_signal(serve)
+
+            self.assertEqual((code, stdout, stderr), (0, "", ""))
+            self.assertIs(handlers[signal.SIGTERM], signal.SIG_IGN)
+            if phase == "publish":
+                self.assertIs(handlers[signal.SIGALRM], signal.SIG_DFL)
+                self.assertIn((signal.ITIMER_REAL, 0.0, 0.0), timers)
+            self.assertEqual(calls[-1], (signal.SIGTERM, signal.SIG_IGN))
+
+    def test_health_mode_never_installs_a_signal_handler(self):
+        with patch(
+            "publisher.runner.signal.signal",
+            side_effect=AssertionError("signal handler installed"),
+        ), patch("publisher.runner.health_main", return_value=17):
+            self.assertEqual(runner.main(["health", "--public-dir", "public"]), 17)
+
+    def test_non_main_thread_serve_keeps_the_process_sigterm_handler(self):
+        previous = signal.getsignal(signal.SIGTERM)
+        results = []
+        errors = []
+
+        def embedded_call():
+            try:
+                results.append(runner.main(self.SERVE_ARGV))
+            except BaseException as exc:
+                errors.append(exc)
+
+        with patch("publisher.runner.run_serve", return_value=29):
+            worker = threading.Thread(target=embedded_call)
+            worker.start()
+            worker.join(timeout=2.0)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(results, [29])
+        self.assertIs(signal.getsignal(signal.SIGTERM), previous)
 
 
 class HealthcheckTests(unittest.TestCase):

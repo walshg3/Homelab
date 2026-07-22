@@ -11,6 +11,7 @@ import json
 import math
 import os
 import re
+import signal
 import stat
 import sys
 import time
@@ -41,6 +42,10 @@ class SecretFileError(ValueError):
 
     def __init__(self):
         super().__init__("secret file rejected")
+
+
+class _ServeTermination(BaseException):
+    """Private control flow for a quiet SIGTERM-driven serve shutdown."""
 
 
 def _reject_secret():
@@ -156,6 +161,8 @@ def load_secret_file(path):
         _validate_secret_metadata(final)
         if _secret_identity(opened) != _secret_identity(final):
             _reject_secret()
+    except (KeyboardInterrupt, SystemExit, _ServeTermination):
+        raise
     except SecretFileError:
         raise
     except BaseException:
@@ -403,15 +410,37 @@ def _parser():
     return parser
 
 
+def _handle_sigterm(_signum, _frame):
+    """Interrupt any serve phase through the PID-one clean stop path."""
+    raise _ServeTermination
+
+
 def main(argv=None):
     try:
         options = _parser().parse_args(argv)
         if options.mode == "health":
             return health_main(options.public_dir)
-        return run_serve(ServeOptions(
+        serve_options = ServeOptions(
             options.config, options.content_root, options.output_dir,
             options.state_file, options.secret_file, options.interval_seconds,
-        ))
+        )
+        sigterm_installed = False
+        previous_sigterm = None
+        try:
+            try:
+                previous_sigterm = signal.signal(signal.SIGTERM, _handle_sigterm)
+                sigterm_installed = True
+            except ValueError:
+                # Signal handlers can only be installed by the main interpreter
+                # thread. Container execution always uses that path; tests or
+                # embedded callers may not.
+                pass
+            return run_serve(serve_options)
+        except _ServeTermination:
+            return 0
+        finally:
+            if sigterm_installed:
+                signal.signal(signal.SIGTERM, previous_sigterm)
     except (SecretFileError, TypeError, ValueError):
         sys.stderr.write("publisher-runner-failed\n")
         return 2

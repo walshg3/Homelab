@@ -2,6 +2,7 @@ name: status-walshit
 
 services:
   publisher:
+    image: status-walshit-publisher:20260721-1
     build:
       context: .
       dockerfile: Dockerfile.publisher
@@ -49,6 +50,7 @@ services:
         target: plex-probe.env
 
   web:
+    image: status-walshit-web:20260721-1
     build:
       context: .
       dockerfile: Dockerfile.web

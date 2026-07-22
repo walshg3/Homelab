@@ -1,6 +1,45 @@
-name: status-walshit-staging
+name: status-walshit-staging-v2
 
 services:
-  web:
+  gateway:
+    image: status-walshit-web:20260721-1
+    command: ["nginx", "-c", "/etc/nginx/nginx.staging-gateway.conf", "-g", "daemon off;"]
+    platform: linux/amd64
+    user: "101:101"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    cpus: "0.25"
+    mem_limit: 64m
+    pids_limit: 32
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "test \"$$(wget -qO- http://127.0.0.1:8080/healthz.txt)\" = status-walshit-web-ok"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - web-internal
+      - staging-ingress
     ports:
       - "127.0.0.1:3015:8080"
+
+networks:
+  staging-ingress:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.255.250.32/28

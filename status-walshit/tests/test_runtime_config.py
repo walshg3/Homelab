@@ -1,4 +1,5 @@
 import json
+import ipaddress
 from pathlib import Path
 import re
 import shutil
@@ -83,8 +84,10 @@ class RuntimeConfigurationTests(unittest.TestCase):
         publisher = services["publisher"]
         web = services["web"]
         self.assertNotRegex(compose, r"(?m)^\s+ports:")
-        self.assertIn('"127.0.0.1:3015:8080"', staging)
-        self.assertIn("name: status-walshit-staging", staging)
+        self.assertNotIn("ports:", publisher)
+        self.assertNotIn("ports:", web)
+        self.assertEqual(compose_list_items(publisher, "networks"), ["      - publisher-egress\n"])
+        self.assertEqual(compose_list_items(web, "networks"), ["      - web-internal\n"])
         for name, block, user in (
             ("publisher", publisher, "1000:1000"),
             ("web", web, "101:101"),
@@ -139,6 +142,112 @@ class RuntimeConfigurationTests(unittest.TestCase):
                           "/var/run/docker.sock", "devices:", "expose:"):
             self.assertNotIn(forbidden, compose)
         self.assertRegex(publisher, r"(?s)/var/lib/status/public.*?/var/lib/status/state.*?/app/content.*?target: plex-probe.env")
+
+    def test_staging_gateway_is_the_only_loopback_ingress_and_uses_a_third_subnet(self):
+        compose = source("compose.yaml")
+        staging = source("compose.staging.yaml")
+        base_services = compose_service_blocks(compose)
+        staging_services = compose_service_blocks(staging)
+        self.assertEqual(set(staging_services), {"gateway"})
+        gateway = staging_services["gateway"]
+        self.assertEqual(staging.count('"127.0.0.1:3015:8080"'), 1)
+        self.assertIn('"127.0.0.1:3015:8080"', gateway)
+        self.assertNotIn("ports:", base_services["publisher"])
+        self.assertNotIn("ports:", base_services["web"])
+        self.assertEqual(
+            set(item.strip().removeprefix("- ") for item in compose_list_items(gateway, "networks")),
+            {"web-internal", "staging-ingress"},
+        )
+        subnets = [
+            ipaddress.ip_network(value)
+            for value in re.findall(r"(?m)^\s+- subnet: (10\.255\.250\.\d+/28)$", compose + staging)
+        ]
+        self.assertEqual(
+            subnets,
+            [
+                ipaddress.ip_network("10.255.250.0/28"),
+                ipaddress.ip_network("10.255.250.16/28"),
+                ipaddress.ip_network("10.255.250.32/28"),
+            ],
+        )
+        for index, subnet in enumerate(subnets):
+            for other in subnets[index + 1:]:
+                self.assertFalse(subnet.overlaps(other), f"{subnet} overlaps {other}")
+        self.assertRegex(staging, r"(?s)staging-ingress:\n\s+driver: bridge\n\s+ipam:")
+        self.assertNotRegex(staging, r"(?s)staging-ingress:.*?internal:\s*true")
+
+    def test_staging_gateway_has_no_data_or_build_inputs_and_is_fully_hardened(self):
+        staging = source("compose.staging.yaml")
+        gateway = compose_service_blocks(staging)["gateway"]
+        self.assertIn("name: status-walshit-staging-v2", staging)
+        for token in (
+            "platform: linux/amd64", 'user: "101:101"', "read_only: true",
+            "no-new-privileges:true", "cap_drop:\n      - ALL",
+            "/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777", 'cpus: "0.25"',
+            "mem_limit: 64m", "pids_limit: 32", "restart: unless-stopped",
+            "driver: json-file", 'max-size: "10m"', 'max-file: "3"',
+            "condition: service_healthy", "status-walshit-web-ok",
+            "/etc/nginx/nginx.staging-gateway.conf", "interval:", "timeout:",
+            "retries:", "start_period:",
+        ):
+            self.assertIn(token, gateway)
+        for forbidden_section in (
+            "volumes", "secrets", "environment", "env_file", "build",
+        ):
+            self.assertNotRegex(gateway, rf"(?m)^    {forbidden_section}:")
+        for forbidden in ("/var/run/docker.sock", "privileged:", "network_mode:", "devices:"):
+            self.assertNotIn(forbidden, gateway)
+
+    def test_stable_local_images_make_gateway_and_web_the_same_artifact(self):
+        compose = source("compose.yaml")
+        staging = source("compose.staging.yaml")
+        base_services = compose_service_blocks(compose)
+        gateway = compose_service_blocks(staging)["gateway"]
+        web_image = re.search(r"(?m)^    image: (status-walshit-web:[0-9-]+)$", base_services["web"])
+        publisher_image = re.search(
+            r"(?m)^    image: (status-walshit-publisher:[0-9-]+)$",
+            base_services["publisher"],
+        )
+        gateway_image = re.search(r"(?m)^    image: (status-walshit-web:[0-9-]+)$", gateway)
+        self.assertIsNotNone(web_image)
+        self.assertIsNotNone(publisher_image)
+        self.assertIsNotNone(gateway_image)
+        self.assertEqual(gateway_image.group(1), web_image.group(1))
+
+    def test_staging_gateway_config_is_fixed_bounded_and_header_safe(self):
+        dockerfile = source("Dockerfile.web")
+        dockerignore = source(".dockerignore")
+        gateway = source("nginx.staging-gateway.conf")
+        security_headers = source("security-headers.conf")
+        self.assertIn(
+            "COPY --chown=101:101 nginx.staging-gateway.conf /etc/nginx/nginx.staging-gateway.conf",
+            dockerfile,
+        )
+        self.assertIn("!nginx.staging-gateway.conf", dockerignore)
+        self.assertEqual(gateway.count("proxy_pass http://web:8080;"), 1)
+        self.assertNotRegex(gateway, r"proxy_pass\s+[^;]*\$")
+        for token in (
+            "worker_processes 1;", "pid /tmp/nginx.pid;", "listen 8080",
+            "server_tokens off;", "autoindex off;", "proxy_connect_timeout 3s;",
+            "proxy_read_timeout 10s;", "proxy_send_timeout 10s;",
+            "proxy_buffering off;", "proxy_request_buffering off;",
+            "if ($request_method !~ ^(?:GET|HEAD)$)", "return 405;",
+            "include /etc/nginx/security-headers.conf;",
+        ):
+            self.assertIn(token, gateway)
+        header_names = set(re.findall(r"(?m)^add_header ([^ ]+) ", security_headers))
+        hidden_names = set(re.findall(r"(?m)^\s*proxy_hide_header ([^;]+);", gateway))
+        self.assertEqual(hidden_names, header_names)
+        for name in header_names:
+            self.assertEqual(gateway.count(f"proxy_hide_header {name};"), 1)
+        for forbidden in (
+            "resolver ", "proxy_cache", "proxy_store", "rewrite ", "Access-Control-Allow",
+            "add_header Cache-Control", "proxy_intercept_errors", "error_page", "try_files",
+            "alias ", "root ", "location = /healthz", "status_stub", "stub_status",
+            "http://web:8080/", "https://", "http://127.", "http://localhost",
+        ):
+            self.assertNotIn(forbidden, gateway)
+        self.assertNotRegex(gateway, r"(?m)^\s*proxy_hide_header (?:Content-Type|Cache-Control);")
 
     def test_each_service_has_bounded_runtime_controls_and_healthcheck(self):
         compose = source("compose.yaml")
@@ -236,7 +345,7 @@ class RuntimeConfigurationTests(unittest.TestCase):
         self.assertEqual(dockerignore.splitlines()[1], "*")
         for admitted in (
             "!Dockerfile.web", "!Dockerfile.publisher", "!nginx.conf",
-            "!security-headers.conf", "!web/", "!publisher/",
+            "!nginx.staging-gateway.conf", "!security-headers.conf", "!web/", "!publisher/",
             "!config/checks.toml",
         ):
             self.assertIn(admitted, dockerignore)
@@ -261,6 +370,8 @@ class RuntimeConfigurationTests(unittest.TestCase):
             "docker compose start publisher", "three intervals", "Cloudflare",
             "DNS", "no port", "destructive", "scoped approval", "rollback",
             "without removing volumes", "command arguments", "environment", "logs",
+            "status-walshit-staging-v2", "status-walshit-staging",
+            "gateway", "internal-only", "must not be removed", "core web",
         ):
             self.assertIn(phrase, docs)
         operations = source("runbooks/operations.md")
@@ -294,15 +405,18 @@ class RuntimeConfigurationTests(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         model = json.loads(completed.stdout)
-        self.assertEqual(model["name"], "status-walshit-staging")
+        self.assertEqual(model["name"], "status-walshit-staging-v2")
         publisher = model["services"]["publisher"]
         web = model["services"]["web"]
+        gateway = model["services"]["gateway"]
         self.assertNotIn("ports", publisher)
+        self.assertNotIn("ports", web)
         self.assertEqual(set(publisher["networks"]), {"publisher-egress"})
         self.assertEqual(set(web["networks"]), {"web-internal"})
+        self.assertEqual(set(gateway["networks"]), {"web-internal", "staging-ingress"})
         self.assertEqual(web["user"], "101:101")
         self.assertEqual(publisher["user"], "1000:1000")
-        for service, expected_pids in ((publisher, 64), (web, 32)):
+        for service, expected_pids in ((publisher, 64), (web, 32), (gateway, 32)):
             self.assertTrue(service["read_only"])
             self.assertEqual(service["cap_drop"], ["ALL"])
             self.assertEqual(service["security_opt"], ["no-new-privileges:true"])
@@ -315,12 +429,24 @@ class RuntimeConfigurationTests(unittest.TestCase):
         self.assertEqual(public_mount["target"], "/usr/share/nginx/html/status/v2")
         self.assertTrue(public_mount["read_only"])
         self.assertTrue(public_mount["volume"]["nocopy"])
-        self.assertEqual(len(web["ports"]), 1)
-        self.assertEqual(web["ports"][0]["host_ip"], "127.0.0.1")
-        self.assertEqual(int(web["ports"][0]["published"]), 3015)
-        self.assertEqual(int(web["ports"][0]["target"]), 8080)
+        self.assertNotIn("volumes", gateway)
+        self.assertNotIn("secrets", gateway)
+        self.assertNotIn("environment", gateway)
+        self.assertNotIn("build", gateway)
+        self.assertEqual(gateway["image"], web["image"])
+        self.assertEqual(len(gateway["ports"]), 1)
+        self.assertEqual(gateway["ports"][0]["host_ip"], "127.0.0.1")
+        self.assertEqual(int(gateway["ports"][0]["published"]), 3015)
+        self.assertEqual(int(gateway["ports"][0]["target"]), 8080)
         self.assertEqual(web["depends_on"]["publisher"]["condition"], "service_healthy")
+        self.assertEqual(gateway["depends_on"]["web"]["condition"], "service_healthy")
         self.assertEqual(publisher["secrets"][0]["source"], "plex-probe")
+        self.assertTrue(model["networks"]["web-internal"]["internal"])
+        self.assertFalse(model["networks"]["staging-ingress"].get("internal", False))
+        self.assertEqual(
+            model["networks"]["staging-ingress"]["ipam"]["config"][0]["subnet"],
+            "10.255.250.32/28",
+        )
 
 
 if __name__ == "__main__":

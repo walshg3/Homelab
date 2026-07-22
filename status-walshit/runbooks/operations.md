@@ -1,21 +1,41 @@
 # Local staging operations
 
-This runbook is for the loopback-only project `status-walshit-staging`. Always
-run commands from `status-walshit/` and always combine the base and staging
-files:
+This runbook is for the loopback-only replacement project
+`status-walshit-staging-v2`. Always run commands from `status-walshit/` and
+always combine the base and staging files:
 
 ```sh
 docker compose -f compose.yaml -f compose.staging.yaml COMMAND
 ```
 
-The production base publishes no port. The staging override binds only
-`127.0.0.1:3015`; it is not reachable from the LAN.
+The top-level `name` in `compose.staging.yaml` selects
+`status-walshit-staging-v2`; do not override it for final staging. The production
+base publishes no ports and contains no gateway. The staging override adds the
+gateway, and only that gateway binds `127.0.0.1:3015:8080`; it is not reachable
+from the LAN. The core web service still publishes no port and remains attached
+only to its no-egress, internal-only bridge.
 
-The two staging bridges use explicit, non-overlapping private `/28` subnets
-(`10.255.250.0/28` and `10.255.250.16/28`). This avoids dependence on the
-Docker host's exhausted automatic address pools. Verify these ranges do not
-overlap host routes or existing Docker networks before bringing up the stack.
-Cloudflare and DNS remain a separately gated future transaction.
+The three bridges use explicit, non-overlapping private `/28` subnets:
+publisher egress is `10.255.250.0/28`, core web is `10.255.250.16/28`, and
+staging ingress is `10.255.250.32/28`. This avoids dependence on the Docker
+host's exhausted automatic address pools. Verify these ranges do not overlap
+host routes or existing Docker networks before bringing up the stack. Cloudflare
+and DNS remain a separately gated future transaction.
+
+Direct publishing from the core web container is intentionally not used. On the
+observed Docker 28.4 runtime, a port binding requested from a container attached
+only to an `internal: true` bridge appears in `HostConfig.PortBindings`, but no
+host listener is installed and `NetworkSettings.Ports` remains empty. Adding an
+ordinary egress-capable bridge to core web would weaken its isolation. The
+staging-only gateway therefore joins `web-internal` and `staging-ingress` and
+proxies only to `http://web:8080`.
+
+The gateway runs as numeric user `101:101` with a read-only root, no added
+capabilities, no-new-privileges, and bounded temporary storage, CPU, memory,
+PIDs, logs, and health timing. It receives no secret, environment, state,
+public-data, content, or Docker socket mount. Publisher remains egress-only with
+no ports; core web remains internal-only with its read-only public volume and no
+ports. Healthy dependencies enforce publisher → core web → gateway.
 
 ## Prepare the secret without printing it
 
@@ -73,6 +93,7 @@ docker compose -f compose.yaml -f compose.staging.yaml ps
 
 Build and startup are host-side acceptance steps. Review their output before
 continuing; never paste probe credentials into an override or retry command.
+This repository does not claim that this repair has been built or run.
 
 ## Acceptance checks
 
@@ -80,13 +101,24 @@ Inspect bounded service status and sanitized logs:
 
 ```sh
 docker compose -f compose.yaml -f compose.staging.yaml ps
-docker compose -f compose.yaml -f compose.staging.yaml logs --no-color --tail 100 publisher web
+docker compose -f compose.yaml -f compose.staging.yaml logs --no-color --tail 100 publisher web gateway
 docker compose -f compose.yaml -f compose.staging.yaml exec publisher python3 -m publisher.runner health --public-dir /var/lib/status/public
 ```
 
 The publisher health command prints only `publisher-health-ok` or
 `publisher-health-failed`. Logs must contain no credentials, internal responses,
 or document bodies.
+
+Before relying on the listener, verify the rendered separation and then confirm
+that gateway and core web are distinct running containers:
+
+```sh
+docker compose -f compose.yaml -f compose.staging.yaml config --format json | python3 -c 'import json,sys; m=json.load(sys.stdin); p=m["services"]["publisher"]; w=m["services"]["web"]; g=m["services"]["gateway"]; assert m["name"] == "status-walshit-staging-v2"; assert "ports" not in p and "ports" not in w; assert set(p["networks"]) == {"publisher-egress"}; assert set(w["networks"]) == {"web-internal"}; assert set(g["networks"]) == {"web-internal", "staging-ingress"}; assert g["ports"][0]["host_ip"] == "127.0.0.1" and int(g["ports"][0]["published"]) == 3015'
+test "$(docker compose -f compose.yaml -f compose.staging.yaml ps -q web)" != "$(docker compose -f compose.yaml -f compose.staging.yaml ps -q gateway)"
+```
+
+The first assertion proves core web has no published port or egress network;
+the second proves the gateway and core web are separate containers.
 
 Check the exact health body, freshness, headers, and browser surface:
 
@@ -109,13 +141,15 @@ prefix must return 404 along with `/status/v2/other.json`, `/status/v2/`, and
 unrelated JSON.
 
 Observe at least three intervals (three 60-second publisher boundaries), then
-check that generation timestamps advance, cycles do not overlap, both health
-checks stay healthy, and logs remain sanitized. Restart each service and repeat
+check that generation timestamps advance and cycles do not overlap. Verify that
+all three health checks stay healthy and logs remain sanitized. Restart each
+service and repeat
 status, health, freshness, header, and browser checks:
 
 ```sh
 docker compose -f compose.yaml -f compose.staging.yaml restart publisher
 docker compose -f compose.yaml -f compose.staging.yaml restart web
+docker compose -f compose.yaml -f compose.staging.yaml restart gateway
 docker compose -f compose.yaml -f compose.staging.yaml ps
 ```
 
@@ -139,13 +173,23 @@ intervals observation to confirm stable recovery.
 
 ## Rollback and destructive boundaries
 
-Staging rollback is `stop`, without removing volumes, images, or files:
+The first failed project `status-walshit-staging` may be stopped in place, but
+must not be removed, downed, or pruned without scoped approval. If stopping it
+is approved operationally, retain the old project name explicitly:
+
+```sh
+docker compose -p status-walshit-staging -f compose.yaml -f compose.staging.yaml stop
+```
+
+Final staging uses only the `status-walshit-staging-v2` project. Its rollback is
+`stop`, without removing volumes, images, or files:
 
 ```sh
 docker compose -f compose.yaml -f compose.staging.yaml stop
 ```
 
-`stop` is a routine reversible action. `down`, volume removal or prune, image
-removal, secret deletion, runtime-file deletion, and any other teardown are
-destructive/removal operations and require explicit scoped approval identifying
-the exact project and objects. Never add `-v` or prune as part of rollback.
+`stop` is a routine reversible action. For either project, `down`, container or
+volume removal, prune, image removal, secret deletion, runtime-file deletion,
+and any other teardown are destructive/removal operations and require explicit
+scoped approval identifying the exact project and objects. Never add `-v` or
+prune as part of rollback.

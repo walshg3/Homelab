@@ -22,6 +22,7 @@ content
 !Dockerfile.web
 !Dockerfile.publisher
 !nginx.conf
+!nginx.staging-gateway.conf
 !security-headers.conf
 !web/
 !web/*.html
