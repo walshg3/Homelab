@@ -279,6 +279,7 @@ class PublisherStateTests(unittest.TestCase):
                 (0, 0, 2),
             },
             "operational": {
+                (1, 0, 0),
                 (2, 0, 0),
                 (0, 1, 0),
                 (0, 2, 0),
@@ -408,6 +409,67 @@ class PurePublishCycleTests(unittest.TestCase):
         self.assertEqual(self.component(still_outage)["state"], "outage")
         recovered = self.advance(probes(), 1, start=at(minute=6))
         self.assertEqual(self.component(recovered)["state"], "operational")
+
+    def test_operational_success_after_one_slow_serializes_restores_and_caps(self):
+        established = self.advance(probes(), 2)
+        established_watch = established.next_state.components[0].health
+        self.assertEqual(
+            (
+                established_watch.base_state,
+                established_watch.success_streak,
+                established_watch.slow_streak,
+                established_watch.failure_streak,
+            ),
+            ("operational", 2, 0, 0),
+        )
+
+        slowed = self.advance(probes(watch="slow"), 1, start=at(minute=2))
+        slowed_watch = slowed.next_state.components[0].health
+        self.assertEqual(
+            (
+                slowed_watch.base_state,
+                slowed_watch.success_streak,
+                slowed_watch.slow_streak,
+                slowed_watch.failure_streak,
+            ),
+            ("operational", 0, 1, 0),
+        )
+
+        succeeded = run_cycle(
+            slowed.next_state,
+            slowed.history_document,
+            at(minute=3),
+            probes(),
+        )
+        serialized_state = json.dumps(succeeded.next_state.to_document())
+        restored = restore_publisher_state(json.loads(serialized_state))
+        restored_watch = restored.components[0].health
+        self.assertEqual(
+            (
+                restored_watch.base_state,
+                restored_watch.success_streak,
+                restored_watch.slow_streak,
+                restored_watch.failure_streak,
+            ),
+            ("operational", 1, 0, 0),
+        )
+
+        later = run_cycle(
+            restored,
+            succeeded.history_document,
+            at(minute=4),
+            probes(),
+        )
+        later_watch = later.next_state.components[0].health
+        self.assertEqual(
+            (
+                later_watch.base_state,
+                later_watch.success_streak,
+                later_watch.slow_streak,
+                later_watch.failure_streak,
+            ),
+            ("operational", 2, 0, 0),
+        )
 
     def test_error_becomes_no_data_and_slow_streak_becomes_degraded(self):
         self.advance(probes(), 2)
