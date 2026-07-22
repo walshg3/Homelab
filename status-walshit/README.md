@@ -7,6 +7,20 @@ separate gateway as the sole owner of the loopback binding
 `127.0.0.1:3015:8080`; Cloudflare and DNS remain a separately gated future
 transaction.
 
+## Operator content workflow
+
+An independent ntfy or Discord alert starts a human decision, never an
+automatic public post. The operator then makes a local copy of the appropriate
+template, edits only public-safe content, runs the validator, and sends the
+change through the reviewed Git and deployment path. The next publisher cycle
+loads it; the operator verifies `summary.json` and `incidents.json`, then uses a
+reviewed change to resolve and eventually archive the event. Automatic
+component state remains separate from manual narration.
+
+Run the templates and validator only from `status-walshit/`. The exact content
+promotion, lifecycle, privacy, soak-watchdog deployment, reporting, and
+rollback procedures are in `runbooks/operations.md`.
+
 ## Runtime boundary
 
 | Service | Identity | Networks | Read/write mounts | Read-only mounts | Inbound surface |
