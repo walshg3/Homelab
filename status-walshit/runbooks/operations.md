@@ -16,7 +16,7 @@ from the LAN. The core web service still publishes no port and remains attached
 only to its no-egress, internal-only bridge.
 
 The three bridges use explicit, non-overlapping private `/28` subnets:
-publisher egress is `10.255.250.0/28`, core web is `10.255.250.16/28`, and
+publisher egress is `10.255.250.48/28`, core web is `10.255.250.64/28`, and
 staging ingress is `10.255.250.32/28`. This avoids dependence on the Docker
 host's exhausted automatic address pools. Verify these ranges do not overlap
 host routes or existing Docker networks before bringing up the stack. Cloudflare

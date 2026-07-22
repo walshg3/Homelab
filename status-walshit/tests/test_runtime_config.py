@@ -103,8 +103,8 @@ class RuntimeConfigurationTests(unittest.TestCase):
                 self.assertIn('max-size: "10m"', block)
                 self.assertIn('max-file: "3"', block)
         self.assertIn("internal: true", compose)
-        self.assertIn("subnet: 10.255.250.0/28", compose)
-        self.assertIn("subnet: 10.255.250.16/28", compose)
+        self.assertIn("subnet: 10.255.250.48/28", compose)
+        self.assertIn("subnet: 10.255.250.64/28", compose)
         self.assertEqual(compose.count("subnet: 10.255.250."), 2)
         self.assertIn("condition: service_healthy", web)
         self.assertIn("- publisher-egress", publisher)
@@ -165,8 +165,8 @@ class RuntimeConfigurationTests(unittest.TestCase):
         self.assertEqual(
             subnets,
             [
-                ipaddress.ip_network("10.255.250.0/28"),
-                ipaddress.ip_network("10.255.250.16/28"),
+                ipaddress.ip_network("10.255.250.48/28"),
+                ipaddress.ip_network("10.255.250.64/28"),
                 ipaddress.ip_network("10.255.250.32/28"),
             ],
         )
