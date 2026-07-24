@@ -175,7 +175,7 @@ class WebSourceTests(unittest.TestCase):
         self.assertNotRegex(self.html, r"(?i)<form\b|<input\b|<select\b|<textarea\b")
         self.assertRegex(
             self.html,
-            r'<link\s+rel="stylesheet"\s+href="status\.css">',
+            r'<link\s+rel="stylesheet"\s+href="status\.css\?v=20260724-mobile1">',
         )
         links = re.findall(r'(?:href|src)="([^"]+)"', self.html)
         self.assertEqual(
@@ -183,7 +183,7 @@ class WebSourceTests(unittest.TestCase):
             {
                 "#main",
                 "#history",
-                "status.css",
+                "status.css?v=20260724-mobile1",
                 "navigation.js",
                 "status.js",
                 "https://walshit.com/",
@@ -193,7 +193,10 @@ class WebSourceTests(unittest.TestCase):
         runtime_assets = re.findall(
             r'<(?:script|link)[^>]+(?:src|href)="([^"]+)"', self.html
         )
-        self.assertEqual(runtime_assets, ["status.css", "navigation.js", "status.js"])
+        self.assertEqual(
+            runtime_assets,
+            ["status.css?v=20260724-mobile1", "navigation.js", "status.js"],
+        )
         external_anchors = re.findall(r'<a[^>]+href="(https://[^"]+)"', self.html)
         self.assertEqual(
             external_anchors,
@@ -411,6 +414,28 @@ class WebSourceTests(unittest.TestCase):
                 rule = re.search(rf"{re.escape(selector)}\s*\{{([^}}]*)\}}", self.css, re.S)
                 self.assertIsNotNone(rule)
                 self.assertNotIn("overflow-wrap", rule.group(1))
+
+    def test_history_meta_resets_placeholder_nowrap_and_can_shrink_within_strip(self):
+        history_meta_rule = re.search(
+            r"\.history-placeholder\s*>\s*\.history-meta\s*\{([^}]*)\}",
+            self.css,
+            re.S,
+        )
+        self.assertIsNotNone(
+            history_meta_rule,
+            ".history-placeholder > .history-meta CSS rule must exist",
+        )
+        declarations = history_meta_rule.group(1)
+        for declaration in (
+            "position: static",
+            "transform: none",
+            "min-width: 0",
+            "max-width: 100%",
+            "white-space: normal",
+            "overflow-wrap: anywhere",
+        ):
+            with self.subTest(declaration=declaration):
+                self.assertIn(declaration, declarations)
 
     def test_overall_field_stays_yellow_while_state_dot_carries_state_color(self):
         compact = re.sub(r"\s+", " ", self.css.lower())

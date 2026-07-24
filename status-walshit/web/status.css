@@ -491,15 +491,20 @@ main {
   border: 1px solid var(--rule);
 }
 
-.history-meta {
+.history-placeholder > .history-meta {
   position: static;
+  min-width: 0;
+  max-width: 100%;
   padding: 0;
   background: none;
   font-size: 0.65rem;
   font-weight: 800;
+  line-height: 1.35;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   transform: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .current-state {
