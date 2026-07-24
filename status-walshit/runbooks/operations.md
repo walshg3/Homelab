@@ -1,5 +1,146 @@
 # Local staging operations
 
+## Permanent public status watchdog
+
+The no-agent `status-public-watchdog` checks the public user path independently
+of the status origin. Its restricted JSON config is resolved only from
+`${HERMES_HOME}/config/status-public-watchdog/watchdog.json` by
+`run_public_status_watchdog.py`. `HERMES_HOME` must be an absolute, normalized,
+non-root path. The config is an owner-controlled regular file with mode `0600`;
+it supplies the exact health, summary, HTTP-root, HTTPS-root, webhook-env,
+state, and lock paths, the public recursive resolvers, and all timeout and size
+bounds. The production URLs are the `status.walshit.com` health, v2 summary,
+plain-HTTP root, and HTTPS root described by the checked-in watchdog contract.
+The strict config has this complete shape; replace only the three illustrative
+absolute filesystem paths with reviewed absolute, normalized, non-root paths:
+
+```json
+{
+  "schema_version": "1",
+  "health_url": "https://status.walshit.com/healthz.txt",
+  "summary_url": "https://status.walshit.com/status/v2/summary.json",
+  "http_root_url": "http://status.walshit.com/",
+  "https_root_url": "https://status.walshit.com/",
+  "webhook_env_file": "/absolute/restricted/status-public-watchdog/discord.env",
+  "state_file": "/absolute/restricted/status-public-watchdog/runtime/state.json",
+  "lock_file": "/absolute/restricted/status-public-watchdog/runtime/watchdog.lock",
+  "resolvers": ["1.1.1.1", "8.8.8.8", "9.9.9.9"],
+  "operation_timeout_seconds": 10,
+  "cycle_timeout_seconds": 45,
+  "max_health_body_bytes": 128,
+  "max_summary_body_bytes": 262144,
+  "max_dns_output_bytes": 8192,
+  "max_age_seconds": 180,
+  "future_tolerance_seconds": 5
+}
+```
+
+Install a fresh profile layout from the repository artifacts with the exact
+owner-only modes below. Run this from `status-walshit/`; do not source the
+Discord env file or print any config, state, or secret body:
+
+```sh
+set -eu
+: "${HERMES_HOME:?set the active Hermes profile root}"
+case "$HERMES_HOME" in /*) ;; *) exit 2 ;; esac
+test "$HERMES_HOME" != /
+test "$(realpath -m "$HERMES_HOME")" = "$HERMES_HOME"
+install -d -m 700 \
+  "$HERMES_HOME/scripts" \
+  "$HERMES_HOME/scripts/publisher" \
+  "$HERMES_HOME/config/status-public-watchdog" \
+  "$HERMES_HOME/runtime/status-public-watchdog"
+install -m 700 operations/public_status_watchdog.py "$HERMES_HOME/scripts/public_status_watchdog.py"
+install -m 700 operations/run_public_status_watchdog.py "$HERMES_HOME/scripts/run_public_status_watchdog.py"
+install -m 600 publisher/__init__.py "$HERMES_HOME/scripts/publisher/__init__.py"
+install -m 600 publisher/schema.py "$HERMES_HOME/scripts/publisher/schema.py"
+WATCHDOG_CONFIG_FILE="$HERMES_HOME/config/status-public-watchdog/watchdog.json"
+test ! -e "$WATCHDOG_CONFIG_FILE"
+test ! -L "$WATCHDOG_CONFIG_FILE"
+install -m 600 /dev/null "$WATCHDOG_CONFIG_FILE"
+```
+
+Edit the new config without changing its mode. Use
+`$HERMES_HOME/runtime/status-public-watchdog/state.json` and
+`$HERMES_HOME/runtime/status-public-watchdog/watchdog.lock` as its exact state
+and lock paths. Set `WATCHDOG_SECRET_FILE` to the existing restricted Discord
+env path entered as `webhook_env_file`; the installer must not replace or
+rewrite that secret:
+
+```sh
+${EDITOR:?set an interactive editor} "$WATCHDOG_CONFIG_FILE"
+: "${WATCHDOG_SECRET_FILE:?set the existing configured Discord env path}"
+case "$WATCHDOG_SECRET_FILE" in /*) ;; *) exit 2 ;; esac
+test -f "$WATCHDOG_CONFIG_FILE"
+test ! -L "$WATCHDOG_CONFIG_FILE"
+test "$(stat -c %h "$WATCHDOG_CONFIG_FILE")" -eq 1
+test "$(stat -c %u "$WATCHDOG_CONFIG_FILE")" -eq "$(id -u)"
+test "$(stat -c %a "$WATCHDOG_CONFIG_FILE")" -eq 600
+test -d "$HERMES_HOME/runtime/status-public-watchdog"
+test ! -L "$HERMES_HOME/runtime/status-public-watchdog"
+test "$(stat -c %u "$HERMES_HOME/runtime/status-public-watchdog")" -eq "$(id -u)"
+test "$(stat -c %a "$HERMES_HOME/runtime/status-public-watchdog")" -eq 700
+test -f "$WATCHDOG_SECRET_FILE"
+test ! -L "$WATCHDOG_SECRET_FILE"
+test "$(stat -c %h "$WATCHDOG_SECRET_FILE")" -eq 1
+test "$(stat -c %u "$WATCHDOG_SECRET_FILE")" -eq "$(id -u)"
+test "$(stat -c %a "$WATCHDOG_SECRET_FILE")" -eq 600
+```
+
+These four copied Python artifacts are the complete application dependency
+set; all other imports are from the Python standard library. Do not install a
+third-party package for this watchdog.
+
+The state and lock share an owner-controlled mode-`0700` directory. State is
+atomically replaced at mode `0600`. The Discord env file contains exactly one
+`DISCORD_WEBHOOK_URL` assignment and must be a regular, owner-readable file
+with no group or world permission bits. The watchdog opens config, state, and
+secret files with no-follow descriptor checks; never display any of them.
+
+Every five-minute run checks HTTPS health and summary behavior, exact HTTP
+redirection, and public A/AAAA resolution through every configured resolver.
+The HTTP client ignores proxy environment variables, disables redirects, and
+uses the platform CA trust store with certificate and exact-hostname
+verification. DNS output may contain bounded, syntactically valid CNAME lines,
+but every resolver must still return at least one correctly typed public A or
+AAAA address. Summary freshness is measured from a UTC sample taken only after
+the complete bounded response body has arrived.
+The summary's schema and freshness determine watchdog validity, but valid
+`degraded`, `outage`, `maintenance`, and `no-data` states do not make the
+watchdog fail. Three consecutive watchdog failures send one outage alert; two
+consecutive valid cycles send one recovery. Runs below a transition threshold
+and healthy runs are silent. Cron delivery stays `local`; transition delivery
+goes directly to the restricted Discord webhook with mentions disabled.
+
+The configured cycle timeout is also enforced as a process-level real-time
+timer across the lock-held transaction, including state load, probes, alert
+delivery, and atomic persistence. The commit boundary is atomic replacement.
+Before replacement, expiry leaves the prior state authoritative,
+releases the lock, emits only `watchdog-cycle-hard-timeout`, and exits nonzero.
+After the exact intended mode-`0600` state bytes are atomically visible at the
+destination, the sample is committed. If replacement or the following
+directory fsync is interrupted, the watchdog performs a bounded,
+descriptor-checked metadata and exact-byte reconciliation: an exact match
+returns success, while an absent, invalid, ambiguous, or nonmatching
+destination fails closed with fixed output. A committed sample whose directory
+fsync was interrupted has a narrow durability caveat: it is authoritative and
+visible to the next run, but a subsequent host crash could lose the directory
+entry before the filesystem makes it durable. A backward wall-clock sample is
+a fixed local failure: the existing state is preserved byte-for-byte and no
+alert is attempted.
+
+Alert delivery is intentionally at-least-once: the transition is posted before
+the updated state is persisted. A crash or local state-write failure in that
+narrow interval can cause a duplicate transition alert on the next run. This
+duplicate-crash window is preferable to recording an alert that Discord never
+received.
+
+To roll back, pause the `Independent public status watchdog` scheduler entry.
+Preserve the wrapper, watchdog script, config, state, lock, and secret while the
+scheduler is paused so investigation and safe resumption retain the evidence
+and consecutive-run history. Do not delete or rewrite those files as part of
+rollback.
+
 This runbook is for the loopback-only replacement project
 `status-walshit-staging-v2`. Always run commands from `status-walshit/` and
 always combine the base and staging files:

@@ -1,0 +1,7 @@
+{
+  "name": "Independent public status watchdog",
+  "schedule": "every 5m",
+  "script": "run_public_status_watchdog.py",
+  "no_agent": true,
+  "deliver": "local"
+}
