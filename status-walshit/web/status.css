@@ -455,7 +455,7 @@ main {
   background: none;
 }
 
-.history-strip {
+.history-placeholder > .history-strip {
   position: static;
   display: grid;
   width: 100%;

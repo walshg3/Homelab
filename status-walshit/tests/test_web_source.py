@@ -175,7 +175,7 @@ class WebSourceTests(unittest.TestCase):
         self.assertNotRegex(self.html, r"(?i)<form\b|<input\b|<select\b|<textarea\b")
         self.assertRegex(
             self.html,
-            r'<link\s+rel="stylesheet"\s+href="status\.css\?v=20260724-mobile1">',
+            r'<link\s+rel="stylesheet"\s+href="status\.css\?v=20260724-mobile2">',
         )
         links = re.findall(r'(?:href|src)="([^"]+)"', self.html)
         self.assertEqual(
@@ -183,7 +183,7 @@ class WebSourceTests(unittest.TestCase):
             {
                 "#main",
                 "#history",
-                "status.css?v=20260724-mobile1",
+                "status.css?v=20260724-mobile2",
                 "navigation.js",
                 "status.js",
                 "https://walshit.com/",
@@ -195,7 +195,7 @@ class WebSourceTests(unittest.TestCase):
         )
         self.assertEqual(
             runtime_assets,
-            ["status.css?v=20260724-mobile1", "navigation.js", "status.js"],
+            ["status.css?v=20260724-mobile2", "navigation.js", "status.js"],
         )
         external_anchors = re.findall(r'<a[^>]+href="(https://[^"]+)"', self.html)
         self.assertEqual(
@@ -434,6 +434,21 @@ class WebSourceTests(unittest.TestCase):
             "white-space: normal",
             "overflow-wrap: anywhere",
         ):
+            with self.subTest(declaration=declaration):
+                self.assertIn(declaration, declarations)
+
+    def test_history_strip_resets_placeholder_positioning_in_normal_flow(self):
+        history_strip_rule = re.search(
+            r"\.history-placeholder\s*>\s*\.history-strip\s*\{([^}]*)\}",
+            self.css,
+            re.S,
+        )
+        self.assertIsNotNone(
+            history_strip_rule,
+            ".history-placeholder > .history-strip CSS rule must exist",
+        )
+        declarations = history_strip_rule.group(1)
+        for declaration in ("position: static", "transform: none"):
             with self.subTest(declaration=declaration):
                 self.assertIn(declaration, declarations)
 
