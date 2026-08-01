@@ -1,5 +1,7 @@
 from pathlib import Path
+import hashlib
 import re
+import struct
 import unittest
 
 from tests.leakcheck import assert_public_safe
@@ -51,6 +53,21 @@ class WebSourceTests(unittest.TestCase):
         self.assertNotRegex(self.html, r"(?i)<style\b")
         self.assertNotRegex(self.html, r"(?i)\sstyle\s*=")
         self.assertNotRegex(self.html, r"(?i)\son[a-z]+\s*=")
+
+    def test_favicon_is_the_canonical_walshit_crest(self):
+        favicon = WEB / "walsh-ticket-crest.png"
+        self.assertTrue(favicon.is_file(), "canonical Walshit crest must be bundled")
+        data = favicon.read_bytes()
+        self.assertEqual(
+            hashlib.sha256(data).hexdigest(),
+            "c0b5d6d4323cb804aca3803f758c5cc8aab79f110fba3839d62c1e93a365bd56",
+        )
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(struct.unpack(">II", data[16:24]), (768, 768))
+        self.assertIn(
+            '<link rel="icon" type="image/png" href="walsh-ticket-crest.png?v=20260801">',
+            self.html,
+        )
 
     def test_shared_header_identity_and_dom_order(self):
         header = re.search(r'<header class="shell">(.*?)</header>', self.html, re.S)
@@ -183,6 +200,7 @@ class WebSourceTests(unittest.TestCase):
             {
                 "#main",
                 "#history",
+                "walsh-ticket-crest.png?v=20260801",
                 "status.css?v=20260724-mobile2",
                 "navigation.js",
                 "status.js",
@@ -195,7 +213,12 @@ class WebSourceTests(unittest.TestCase):
         )
         self.assertEqual(
             runtime_assets,
-            ["status.css?v=20260724-mobile2", "navigation.js", "status.js"],
+            [
+                "walsh-ticket-crest.png?v=20260801",
+                "status.css?v=20260724-mobile2",
+                "navigation.js",
+                "status.js",
+            ],
         )
         external_anchors = re.findall(r'<a[^>]+href="(https://[^"]+)"', self.html)
         self.assertEqual(
