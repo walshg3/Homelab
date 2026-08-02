@@ -321,6 +321,7 @@ class RuntimeConfigurationTests(unittest.TestCase):
             self.assertIn(f'add_header {name} "{value}" always;', headers)
         for token in ("listen 8080", "pid /tmp/nginx.pid", "server_tokens off",
                       "autoindex off", "location = /healthz.txt", "location = /",
+                      "location = /walsh-ticket-crest.png",
                       "location ~ \\.html$", "location ~ \\.(?:css|js)$",
                       "location = /status/v2/summary.json",
                       "location = /status/v2/history.json",
