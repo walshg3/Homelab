@@ -28,6 +28,7 @@ REQUIRED_FILES = {
 }
 ALLOWED_EXTERNAL_ANCHOR_HOSTS = {
     "app.plex.tv",
+    "docs.google.com",
     "home.walshit.com",
     "requests.walshit.com",
     "books.walshit.com",
