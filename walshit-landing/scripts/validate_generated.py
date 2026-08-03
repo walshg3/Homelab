@@ -28,12 +28,17 @@ REQUIRED_FILES = {
 }
 ALLOWED_EXTERNAL_ANCHOR_HOSTS = {
     "app.plex.tv",
+    "apps.apple.com",
     "docs.google.com",
+    "firecore.com",
     "home.walshit.com",
     "requests.walshit.com",
     "books.walshit.com",
     "bookrequests.walshit.com",
     "status.walshit.com",
+    "support.apple.com",
+    "support.firecore.com",
+    "support.plex.tv",
     "buymeacoffee.com",
 }
 EXPECTED_PUBLIC_SCHEME = "https"
