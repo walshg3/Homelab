@@ -185,6 +185,26 @@ class PlexStreamingDeviceGuideTest(unittest.TestCase):
         )
 
 
+class InfuseAppleTVGuideTest(unittest.TestCase):
+    """The Infuse guide is actionable for remote members without server access."""
+
+    def test_guide_addresses_remote_shared_library_members(self):
+        guide = (
+            CONTENT / "guides" / "infuse-vs-plex-apple-tv.md"
+        ).read_text()
+        self.assertIn("shared library over the internet", guide)
+        self.assertIn("most of this library is 4K", guide)
+        self.assertNotIn("demanding local playback", guide)
+
+    def test_recommendation_does_not_require_plex_dashboard_access(self):
+        guide = (
+            CONTENT / "guides" / "infuse-vs-plex-apple-tv.md"
+        ).read_text()
+        self.assertNotIn("dashboard", guide.lower())
+        self.assertIn("same audio and subtitle selections", guide)
+        self.assertIn("start with Infuse Pro", guide)
+
+
 class UpdatesLinkStylingTest(unittest.TestCase):
     """Updates intro and RSS links reuse the established article-link treatment."""
 
