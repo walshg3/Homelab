@@ -161,6 +161,30 @@ class FundingIntegrationTest(unittest.TestCase):
         self.assertNotRegex(css, r"nav a\.coffee-nav:hover\s*\{[^}]*(?:transform|box-shadow)")
 
 
+class PlexStreamingDeviceGuideTest(unittest.TestCase):
+    """The buyer's guide serves remote library members and favors Infuse on Apple TV."""
+
+    def test_guide_is_written_for_remote_library_members(self):
+        guide = (
+            CONTENT / "guides" / "best-streaming-devices-for-plex.md"
+        ).read_text()
+        self.assertIn("shared Plex library over the internet", guide)
+        self.assertIn("server's upload speed", guide)
+        self.assertIn("client home's internet connection", guide)
+        self.assertNotIn("for local Plex playback", guide)
+
+    def test_apple_tv_recommendation_leads_with_infuse(self):
+        guide = (
+            CONTENT / "guides" / "best-streaming-devices-for-plex.md"
+        ).read_text()
+        self.assertIn("If you buy an Apple TV for this library, start with Infuse Pro", guide)
+        self.assertIn("need a lower-bitrate adaptive transcode", guide)
+        self.assertIn(
+            "](/guides/infuse-vs-plex-apple-tv/)",
+            guide,
+        )
+
+
 class UpdatesLinkStylingTest(unittest.TestCase):
     """Updates intro and RSS links reuse the established article-link treatment."""
 
