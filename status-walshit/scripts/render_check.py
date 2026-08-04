@@ -20,6 +20,14 @@ WEB = ROOT / "web"
 FIXTURES = ROOT / "fixtures"
 CHROMIUM_CANDIDATES = ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable")
 EXPECTED_SCENARIO_COUNT = 9
+FONT_REQUESTS = {
+    "/fonts/archivo-narrow-italic-variable.woff2",
+    "/fonts/archivo-narrow-variable.woff2",
+    "/fonts/libre-baskerville-italic-variable.woff2",
+    "/fonts/libre-baskerville-variable.woff2",
+    "/fonts/source-serif-4-italic-variable.woff2",
+    "/fonts/source-serif-4-variable.woff2",
+}
 EXPECTED_REQUESTS = {
     "/",
     "/status.css",
@@ -27,8 +35,9 @@ EXPECTED_REQUESTS = {
     "/status.js",
     "/status/v2/summary.json",
     "/status/v2/history.json",
+    "/walsh-ticket-crest.png",
     "/favicon.ico",
-}
+} | FONT_REQUESTS
 
 
 class NodeCollector(HTMLParser):
@@ -111,7 +120,7 @@ def fixture_server(
                     "text/javascript",
                     injected + (WEB / "status.js").read_bytes(),
                 )
-            if path in {"/status.css", "/navigation.js"}:
+            if path in {"/status.css", "/navigation.js", "/walsh-ticket-crest.png"} | FONT_REQUESTS:
                 return self.send_file(WEB / path.removeprefix("/"))
             self.send_bytes(404, "text/plain", b"not found")
 

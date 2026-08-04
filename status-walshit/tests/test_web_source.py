@@ -16,6 +16,48 @@ class WebSourceTests(unittest.TestCase):
         self.html = (WEB / "index.html").read_text(encoding="utf-8")
         self.css = (WEB / "status.css").read_text(encoding="utf-8")
 
+    def test_approved_self_hosted_typography_assets_and_roles(self):
+        fonts = WEB / "fonts"
+        approved = {
+            "archivo-narrow-italic-variable.woff2",
+            "archivo-narrow-variable.woff2",
+            "libre-baskerville-italic-variable.woff2",
+            "libre-baskerville-variable.woff2",
+            "source-serif-4-italic-variable.woff2",
+            "source-serif-4-variable.woff2",
+            "licenses/archivo-narrow-OFL.txt",
+            "licenses/libre-baskerville-OFL.txt",
+            "licenses/source-serif-4-OFL.txt",
+        }
+        actual = {
+            path.relative_to(fonts).as_posix()
+            for path in fonts.rglob("*")
+            if path.is_file()
+        }
+        self.assertEqual(actual, approved)
+        for relative in sorted(path for path in approved if path.endswith(".woff2")):
+            with self.subTest(font=relative):
+                self.assertEqual((fonts / relative).read_bytes()[:4], b"wOF2")
+
+        self.assertEqual(self.css.count("@font-face"), 6)
+        self.assertEqual(self.css.count("font-display: swap"), 6)
+        self.assertIn('--display: "Libre Baskerville", Georgia, "Times New Roman", serif;', self.css)
+        self.assertIn('--serif: "Source Serif 4", Georgia, "Times New Roman", serif;', self.css)
+        self.assertIn('--sans: "Archivo Narrow", "Arial Narrow", "Aptos Narrow", sans-serif;', self.css)
+        self.assertIn("font-family: var(--display)", self.css)
+        overall_title = re.search(r"\.overall-title\s*\{([^}]*)\}", self.css, re.S)
+        if overall_title is None:
+            self.fail(".overall-title CSS rule must exist")
+        self.assertIn("max-width: 880px", overall_title.group(1))
+        self.assertIn("letter-spacing: -0.015em", overall_title.group(1))
+        self.assertIn("line-height: 0.96", overall_title.group(1))
+        self.assertNotIn("Fraunces", self.css)
+        self.assertNotIn("fraunces", "\n".join(sorted(actual)).lower())
+        self.assertIn(
+            '<link rel="preload" href="fonts/libre-baskerville-variable.woff2" as="font" type="font/woff2" crossorigin>',
+            self.html,
+        )
+
     def test_status_runtime_uses_only_contract_endpoints_and_sixty_second_refresh(self):
         path = WEB / "status.js"
         self.assertTrue(path.is_file(), "web/status.js must exist")
@@ -186,13 +228,13 @@ class WebSourceTests(unittest.TestCase):
         self.assertEqual(stamps, ["Awaiting data"] * 5)
 
     def test_assets_are_local_and_page_has_no_runtime_surface(self):
-        self.assertNotRegex(self.css, r"(?i)@import|@font-face|url\s*\(\s*['\"]?https?://")
+        self.assertNotRegex(self.css, r"(?i)@import|url\s*\(\s*['\"]?https?://")
         self.assertEqual(self.css.count('url("data:image/svg+xml,'), 1)
         self.assertNotRegex(self.html, r"(?i)<(?:img|picture|source|iframe|object|embed)\b")
         self.assertNotRegex(self.html, r"(?i)<form\b|<input\b|<select\b|<textarea\b")
         self.assertRegex(
             self.html,
-            r'<link\s+rel="stylesheet"\s+href="status\.css\?v=20260724-mobile2">',
+            r'<link\s+rel="stylesheet"\s+href="status\.css\?v=20260804-typography1">',
         )
         links = re.findall(r'(?:href|src)="([^"]+)"', self.html)
         self.assertEqual(
@@ -200,8 +242,9 @@ class WebSourceTests(unittest.TestCase):
             {
                 "#main",
                 "#history",
+                "fonts/libre-baskerville-variable.woff2",
                 "walsh-ticket-crest.png?v=20260801",
-                "status.css?v=20260724-mobile2",
+                "status.css?v=20260804-typography1",
                 "navigation.js",
                 "status.js",
                 "https://walshit.com/",
@@ -214,8 +257,9 @@ class WebSourceTests(unittest.TestCase):
         self.assertEqual(
             runtime_assets,
             [
+                "fonts/libre-baskerville-variable.woff2",
                 "walsh-ticket-crest.png?v=20260801",
-                "status.css?v=20260724-mobile2",
+                "status.css?v=20260804-typography1",
                 "navigation.js",
                 "status.js",
             ],

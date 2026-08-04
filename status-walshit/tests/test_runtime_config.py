@@ -323,6 +323,7 @@ class RuntimeConfigurationTests(unittest.TestCase):
                       "autoindex off", "location = /healthz.txt", "location = /",
                       "location = /walsh-ticket-crest.png",
                       "location ~ \\.html$", "location ~ \\.(?:css|js)$",
+                      "location ~ ^/fonts/[a-z0-9-]+\\.woff2$",
                       "location = /status/v2/summary.json",
                       "location = /status/v2/history.json",
                       "location = /status/v2/incidents.json", "return 404"):
