@@ -62,9 +62,9 @@ Rollback does not require deleting volumes, pruning images, or removing unrelate
 
 ---
 
-## Hugo content prototype (Updates / Guides)
+## Hugo site (Updates / Guides)
 
-An isolated Hugo MVP prototype lives alongside the legacy static page above,
+The production Hugo site lives alongside the legacy static page above,
 under `hugo/`, `tests/`, `Dockerfile.hugo`, `nginx.hugo.conf`, and
 `compose.hugo.yaml`. It does not replace or modify the legacy `site/`,
 `Dockerfile`, `nginx.conf`, or `compose.yaml` files, which remain the
@@ -165,7 +165,7 @@ docker compose -f compose.hugo.yaml down
 
 **Not run here:** requires a Docker daemon, unavailable in this sandbox.
 
-### Release
+### Local release preview
 
 Build and tag the image, then bring the prototype service up in its declared
 `walshit-landing-hugo` Compose project, independent of the legacy `landing`
@@ -189,5 +189,88 @@ docker compose -f compose.hugo.yaml down
 ```
 
 The legacy stack (`compose.yaml`, `Dockerfile`, `nginx.conf`, `site/`)
-is untouched by this prototype and remains the immediate rollback path
-if the Hugo prototype is ever promoted and needs to be reverted.
+is untouched by the Hugo site and remains a separately retained rollback input.
+
+## GitHub Actions deployment
+
+`.github/workflows/walshit.yml` runs for every pull request and push to `main`
+so its required check cannot be skipped by path filtering. It installs checksum-verified Hugo
+v0.164.0, runs all source/generated/CI contract tests, renders both Compose
+models, and performs a real hardened-container smoke test. After publication,
+the publish job pulls and smoke-tests the exact pushed digest before deployment
+can begin. A successful
+`main` push publishes both
+`ghcr.io/walshg3/walshit-landing:<full-commit-sha>` and the convenience
+`main` tag. Production always deploys the full commit-SHA tag; it never uses
+`main` as a deployment identity. The publish job also returns the immutable
+manifest digest, and the production Compose model runs the `image@sha256`
+reference after proving the commit tag resolves to that exact digest.
+
+Repository-side workflow syntax can be checked with
+`actionlint -config-file actionlint.yaml .github/workflows/walshit.yml` from
+the repository root. The explicit config path registers the private
+`walshit-production` runner label.
+
+The publish job uses only the workflow-scoped `GITHUB_TOKEN`. No repository or environment secrets are required. Set the GHCR package to public so the
+deployment wrapper can pull it anonymously; if the package must remain
+private, provision a host-local read-only package credential outside GitHub
+Actions and outside this repository.
+
+### Required GitHub setup
+
+1. Create a protected production Environment named `production`, restricted to `main`; add a
+   required reviewer when the repository plan supports it.
+2. Protect `main`: require pull requests and the `Test and container smoke
+   test` check, require current branches, and block force pushes/deletion.
+3. Because this repository is public, first choose **Require approval for all outside collaborators** under **Settings > Actions > General > Fork pull request workflows from outside collaborators**. Never approve untrusted workflow
+   changes while production runner capacity is online. Only then register a
+   repository-scoped self-hosted runner on the containers VM with labels
+   `self-hosted`, `linux`, `x64`, and `walshit-production`. Run it as a dedicated
+   unprivileged `walshit-deploy` account, preferably as an ephemeral/JIT runner
+   that is offline except for a reviewed deployment. Install `git` for the
+   freshness check. Do not add that account to the Docker or sudo groups.
+4. Install `compose.production.yaml` as root-owned mode `0644` at
+   `/etc/walshit/compose.production.yaml` and install
+   `scripts/deploy-production.sh` as root-owned mode `0755` at
+   `/usr/local/sbin/deploy-walshit`.
+5. Add one exact sudoers rule allowing only the `walshit-deploy` account to
+   execute `/usr/local/sbin/deploy-walshit` as root. Do not grant arbitrary
+   Docker, shell, file-copy, or environment-preservation privileges.
+6. Confirm the retained external network
+   `walshit-landing-hugo-prod-9238dbfa_default` exists and still has the
+   reviewed subnet before enabling the Environment.
+
+The deploy job has a production concurrency lock and rechecks remote `main`
+immediately before invoking the wrapper, so a superseded queued run cannot
+deploy after a newer revision. The wrapper accepts exactly one lowercase
+40-character commit SHA plus its `sha256` digest, verifies its own and the
+trusted Compose file's root ownership/modes, takes a host lock, pulls the
+exact commit tag, and proves by immutable Docker image-ID equality that the tag
+resolves to the supplied digest and revision label. The host lock lives at
+`/run/walshit/production.lock` inside a root-owned mode `0700` directory. It
+first creates only `landing-hugo` as a loopback candidate on the
+retained external bridge. After candidate acceptance and a second remote-main
+check, it stops but retains the current production container and starts a
+SHA-named live project on the fixed origin. Each Compose start uses
+`--no-deps --no-build --pull never`; it never runs Compose `down`, removes
+volumes/networks/containers, or prunes resources.
+
+Both candidate and live acceptance wait for Docker health and the exact
+`walshit-landing-hugo-ok` body. A failed candidate is stopped and retained
+without touching production. A failed live cutover stops and retains the
+rejected container, restarts the retained predecessor, waits for predecessor
+health, and exits nonzero with a clear rollback result. Successful releases
+also leave the predecessor stopped and retained. Cleanup remains a separate,
+explicitly approved operation. A failed candidate or repeated revision is
+retained for diagnosis; a same-SHA retry requires operator review and removal
+of only that SHA-named retained project. If no container owns production port
+3003, restore the retained predecessor before retrying rather than bypassing
+the fail-closed listener check. Exit and signal traps attempt the same rollback
+when a catchable termination signal reaches the wrapper after cutover begins;
+the deploy job allows 40 minutes for pull, acceptance, and rollback. A failed
+emergency rollback prints an immediate operator-recovery warning.
+
+The production Compose model declares no persistent volume. Its retained
+external network, fixed origin binding, read-only root, non-root identity,
+capability drop, resource limits, tmpfs, health check, and bounded logs are
+all explicit. Cloudflare/DNS are outside this pipeline and are not mutated.
