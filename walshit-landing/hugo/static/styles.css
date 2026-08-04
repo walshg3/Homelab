@@ -1,3 +1,46 @@
+@font-face {
+  font-family: "Libre Baskerville";
+  src: url("fonts/libre-baskerville-variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Libre Baskerville";
+  src: url("fonts/libre-baskerville-italic-variable.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("fonts/source-serif-4-variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("fonts/source-serif-4-italic-variable.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Archivo Narrow";
+  src: url("fonts/archivo-narrow-variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Archivo Narrow";
+  src: url("fonts/archivo-narrow-italic-variable.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 400 700;
+  font-display: swap;
+}
+
 :root {
   --paper: #f2ead9;
   --paper-2: #e5d8bd;
@@ -6,8 +49,9 @@
   --yellow: #f1bd38;
   --rule: rgba(23, 23, 19, .28);
   --max: 1280px;
-  --sans: "Arial Narrow", "Aptos Narrow", "Helvetica Neue", Arial, sans-serif;
-  --serif: Georgia, "Times New Roman", serif;
+  --display: "Libre Baskerville", Georgia, "Times New Roman", serif;
+  --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --sans: "Archivo Narrow", "Arial Narrow", "Aptos Narrow", sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -154,11 +198,11 @@ nav a.coffee-nav {
 h1 {
   max-width: 780px;
   margin: 0;
-  font-family: var(--serif);
+  font-family: var(--display);
   font-size: clamp(4rem, 8.3vw, 7.8rem);
   font-weight: 400;
-  letter-spacing: -.075em;
-  line-height: .83;
+  letter-spacing: -.02em;
+  line-height: .92;
 }
 h1 em { color: var(--red); font-weight: 400; }
 .dek {
@@ -343,9 +387,10 @@ dialog::backdrop { background: rgba(23,23,19,.72); backdrop-filter: blur(2px); }
   border-bottom: 1px solid var(--ink);
 }
 .article-title {
-  max-width: 920px;
-  font-size: clamp(3.3rem, 7vw, 6.6rem);
-  line-height: .9;
+  max-width: 1120px;
+  font-size: clamp(3.3rem, 6.4vw, 6.2rem);
+  letter-spacing: -.015em;
+  line-height: .98;
 }
 .article-body {
   max-width: 760px;
@@ -434,7 +479,10 @@ dialog::backdrop { background: rgba(23,23,19,.72); backdrop-filter: blur(2px); }
   footer { min-height: 140px; }
   footer p:not(.footer-mark) { max-width: 180px; }
   .article { min-height: auto; padding-block: 3.5rem; }
-  .article-title { font-size: clamp(3rem, 14vw, 5rem); }
+  .article-title {
+    font-size: clamp(2.65rem, 11.5vw, 4.25rem);
+    line-height: 1;
+  }
   .maintenance-item { grid-template-columns: 1fr; }
   .maintenance-item p { grid-column: 1; }
 }

@@ -99,7 +99,7 @@ class FundingIntegrationTest(unittest.TestCase):
 
     def test_header_support_css_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260719-3"', config)
+        self.assertIn('assetVersion = "20260804-1"', config)
 
     def test_header_support_label_preserves_requested_case(self):
         css = (HUGO / "static" / "styles.css").read_text()
@@ -146,7 +146,7 @@ class FundingIntegrationTest(unittest.TestCase):
 
     def test_mobile_hamburger_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260719-3"', config)
+        self.assertIn('assetVersion = "20260804-1"', config)
 
     def test_header_support_control_is_compact_and_flat(self):
         css = (HUGO / "static" / "styles.css").read_text()
@@ -225,7 +225,7 @@ class UpdatesLinkStylingTest(unittest.TestCase):
 
     def test_updates_link_style_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260719-3"', config)
+        self.assertIn('assetVersion = "20260804-1"', config)
 
 
 class UpdatesDateSpacingTest(unittest.TestCase):
@@ -254,7 +254,7 @@ class UpdatesDateSpacingTest(unittest.TestCase):
 
     def test_update_date_spacing_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260719-3"', config)
+        self.assertIn('assetVersion = "20260804-1"', config)
 
 
 def _all_content_files():
