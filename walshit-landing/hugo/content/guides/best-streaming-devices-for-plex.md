@@ -9,18 +9,18 @@ tags = ["plex", "hardware", "home-theater"]
 affected_services = ["plex"]
 +++
 
-The best Plex player depends on what you expect it to do. This guide is written for members streaming from a shared Plex library over the internet, not people running a Plex server beside the TV. A home theater playing full-quality UHD Blu-ray **remuxes**—disc video and audio copied without re-encoding—has different needs from a bedroom TV playing smaller H.264 or HEVC files.
+The best Plex player depends on what you expect it to do. This guide is written for members streaming from a shared Plex library over the internet.
 
 ## The short answer
 
-- Buy the **Nvidia Shield TV Pro (2019)** if you need Dolby TrueHD Atmos or DTS:X from full-quality disc remuxes in the Plex library. It is old, but it remains the safest mainstream Plex choice for sending those tracks untouched to a compatible receiver or soundbar.
-- Buy the **Apple TV 4K 128GB Wi-Fi + Ethernet model** if you want the best everyday interface and do not need TrueHD Atmos or DTS:X object metadata. If you buy an Apple TV for this library, start with Infuse Pro and keep the native Plex app as a fallback for streams that need server-side conversion.
+- Buy the **Nvidia Shield TV Pro (2019)** if you want the best mainstream option for untouched TrueHD Atmos and DTS:X. It is old, but it remains the safest mainstream Plex choice for sending those tracks untouched to a compatible receiver or soundbar.
+- Buy the **Apple TV 4K 128GB Wi-Fi + Ethernet model** if you want the best everyday interface and do not need TrueHD Atmos or DTS:X object metadata. If you buy an Apple TV for this library, start with **Infuse Pro** and keep the native Plex app as a fallback for streams that need server-side conversion.
 - Buy the **Google TV Streamer (4K)** if you want a current Google TV box with Gigabit Ethernet near the middle of the market and can accept less complete disc-audio support.
 - Buy a **Roku Ultra or discounted 4K stick** for a secondary TV, a modest library, or a tight budget. Do not expect budget hardware to behave like a dedicated remux player.
 
 Whatever box you choose, use **wired Ethernet** when you can. It is the most reliable connection for Plex, especially with high-bitrate 4K remuxes. Good Wi-Fi can work, but remote streaming also depends on the server's upload speed, the client home's internet connection, the selected remote-quality setting, and whether Plex must transcode the file.
 
-For the test-by-test details behind these recommendations, see the [Plex streaming-device comparison spreadsheet](https://docs.google.com/spreadsheets/d/1-nOzJkgEmo_wrU3zyUy21qW8vJ-Vo1j_z6GLhQBiTOQ/edit?gid=0#gid=0). Treat it as useful historical evidence rather than a promise about every current app and firmware version.
+For the test-by-test details behind these recommendations, see the [Plex streaming-device comparison spreadsheet](https://docs.google.com/spreadsheets/d/15Wf_jy5WqOPShczFKQB28cCetBgAGcnA0mNOG-ePwDc/edit?gid=0#gid=0).
 
 ## Best for a serious home theater: Nvidia Shield TV Pro
 
@@ -28,7 +28,7 @@ The Shield TV Pro is still the box to beat when the receiver's front panel needs
 
 That distinction matters. Plex can report **Direct Play**, meaning the server sent the original file without converting it, while the player still decodes its audio before HDMI output. A **codec** is the format used to encode video or audio. The Shield can pass supported Dolby TrueHD, DTS-HD, Dolby Atmos, and DTS:X bitstreams to compatible home-theater equipment. This preserves the object metadata used to place effects above and around the listener.
 
-The Shield Pro also has Gigabit Ethernet, two USB ports, and mature Plex and Kodi options. Kodi with PlexKodiConnect can handle some unusual codecs or subtitle formats that give the native Plex app trouble.
+The Shield Pro also has Gigabit Ethernet, two USB ports, and a 64-bit Android TV platform that can run Kodi for edge cases. It is the best mainstream Plex option for a demanding library of UHD remuxes.
 
 ### Pros
 
@@ -133,14 +133,7 @@ Strong, well-configured 5GHz Wi-Fi 5 or Wi-Fi 6 can still be enough. Nearby Wi-F
 
 ## Test before the return window closes
 
-Connect the player through the TV, receiver, or soundbar you will actually use. Set Plex remote quality to Maximum or Original when your connection can support it, and leave Direct Play enabled. On Apple TV, test in Infuse first and repeat any problem title in the native Plex app. Then test:
-
-1. An ordinary H.264 file
-2. A high-bitrate 4K HEVC HDR remux
-3. Any Dolby Vision profiles in the shared library
-4. TrueHD Atmos and DTS:X or DTS-HD MA tracks
-5. PGS and ASS/SSA subtitles
-6. Repeated seeking through your largest file
+Connect the player through the TV, receiver, or soundbar you will actually use. Set Plex remote quality to Maximum or Original when your connection can support it, and leave Direct Play enabled. On Apple TV, test in Infuse first and repeat any problem title in the native Plex app.
 
 Use the player's playback information—or ask the library owner to check the Plex Dashboard—to see whether playback is Direct Play, Direct Stream, audio transcode, or video transcode. Check the receiver's display too. Plex can say Direct Play while the receiver correctly says Multichannel PCM.
 
