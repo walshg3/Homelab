@@ -1,0 +1,210 @@
+name: Walshit CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test and container smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: walshit-landing
+    steps:
+      - name: Check out the tested revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install checksum-verified Hugo v0.164.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="hugo_0.164.0_linux-amd64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/gohugoio/hugo/releases/download/v0.164.0/${archive}" \
+            --output "/tmp/${archive}"
+          printf '%s  %s\n' \
+            'd9c8b17285ea4ec004d9f814273ea910f2051ce02c284993fd1f91ba455ae50d' \
+            "/tmp/${archive}" | sha256sum --check --strict
+          mkdir -p /tmp/hugo-v0.164.0
+          tar -xzf "/tmp/${archive}" -C /tmp/hugo-v0.164.0 hugo
+          /tmp/hugo-v0.164.0/hugo version | grep -F 'v0.164.0'
+
+      - name: Run source and generated-output tests
+        env:
+          HUGO_BIN: /tmp/hugo-v0.164.0/hugo
+        run: |
+          set -euo pipefail
+          python3 tests/test_site.py -v
+          python3 tests/test_typography_preview.py -v
+          python3 tests/test_generated.py -v
+          python3 tests/test_cicd.py -v
+          git diff --check
+
+      - name: Validate Compose models
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_DIGEST: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        run: |
+          set -euo pipefail
+          docker compose -f compose.hugo.yaml config --quiet
+          docker compose -f compose.production.yaml config --quiet
+
+      - name: Build and smoke-test the hardened image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="walshit-ci:${GITHUB_SHA}"
+          name="walshit-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker build --platform linux/amd64 \
+            --build-arg "SOURCE_REVISION=${GITHUB_SHA}" \
+            -f Dockerfile.hugo -t "$image" .
+          cleanup() { docker stop "$name" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run --rm -d --name "$name" \
+            --user 101:101 --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777 \
+            --pids-limit 64 --memory 64m --cpus 0.5 \
+            -p 127.0.0.1::8080 "$image" >/dev/null
+          for attempt in $(seq 1 30); do
+            if [ "$(docker inspect --format '{{.State.Running}}' "$name")" = true ]; then
+              port="$(docker port "$name" 8080/tcp | sed 's/.*://')"
+              if [ "$(curl --fail --silent "http://127.0.0.1:${port}/healthz.txt")" = \
+                   'walshit-landing-hugo-ok' ]; then
+                break
+              fi
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              docker logs --tail 50 "$name" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          test "$(docker inspect --format '{{.Config.User}}' "$name")" = '101:101'
+          test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$name")" = true
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")" = "$GITHUB_SHA"
+
+  publish:
+    name: Publish immutable GHCR image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Check out the tested revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate OCI metadata
+        id: metadata
+        uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
+        with:
+          images: ghcr.io/walshg3/walshit-landing
+          tags: |
+            type=sha,format=long,prefix=
+            type=raw,value=main
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/walshg3/Homelab
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: walshit-landing
+          file: walshit-landing/Dockerfile.hugo
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: SOURCE_REVISION=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Smoke-test the published immutable image
+        shell: bash
+        env:
+          PUBLISHED_IMAGE: ghcr.io/walshg3/walshit-landing@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          name="walshit-published-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() { docker stop "$name" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker pull "$PUBLISHED_IMAGE" >/dev/null
+          docker run --rm -d --name "$name" \
+            --user 101:101 --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777 \
+            --pids-limit 64 --memory 64m --cpus 0.5 \
+            -p 127.0.0.1::8080 "$PUBLISHED_IMAGE" >/dev/null
+          for attempt in $(seq 1 30); do
+            if [ "$(docker inspect --format '{{.State.Running}}' "$name")" = true ]; then
+              port="$(docker port "$name" 8080/tcp | sed 's/.*://')"
+              if [ "$(curl --fail --silent "http://127.0.0.1:${port}/healthz.txt")" = \
+                   'walshit-landing-hugo-ok' ]; then
+                break
+              fi
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              docker logs --tail 50 "$name" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          test "$(docker inspect --format '{{.Image}}' "$name")" = \
+            "$(docker image inspect --format '{{.Id}}' "$PUBLISHED_IMAGE")"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$PUBLISHED_IMAGE")" = "$GITHUB_SHA"
+
+  deploy:
+    name: Deploy production
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: publish
+    runs-on: [self-hosted, linux, x64, walshit-production]
+    timeout-minutes: 40
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: walshit-production
+      cancel-in-progress: false
+    steps:
+      - name: Reject a superseded queued deployment
+        id: freshness
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_sha="$(git ls-remote https://github.com/walshg3/Homelab.git refs/heads/main | cut -f1)"
+          if [ "$remote_sha" != "$GITHUB_SHA" ]; then
+            echo "Skipping superseded revision $GITHUB_SHA; main is $remote_sha"
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Invoke the audited host deployment wrapper
+        if: steps.freshness.outputs.deploy == 'true'
+        env:
+          PUBLISHED_DIGEST: ${{ needs.publish.outputs.digest }}
+        run: sudo /usr/local/sbin/deploy-walshit "$GITHUB_SHA" "$PUBLISHED_DIGEST"

@@ -35,7 +35,9 @@
 
 # Whitelist documentation and repository funding metadata
 !README.md
+!actionlint.yaml
 !.github/FUNDING.yml
+!.github/workflows/walshit.yml
 
 # Whitelist the reviewed ntfy-to-Discord bridge source and tests. Runtime
 # secrets and state remain covered by the .env and data exclusions above.
@@ -70,6 +72,7 @@
 !walshit-landing/nginx.hugo.conf
 !walshit-landing/security-headers.conf
 !walshit-landing/compose.hugo.yaml
+!walshit-landing/compose.production.yaml
 !walshit-landing/scripts/
 !walshit-landing/scripts/**
 
