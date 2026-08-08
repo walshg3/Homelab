@@ -226,9 +226,20 @@ Actions and outside this repository.
    changes while production runner capacity is online. Only then register a
    repository-scoped self-hosted runner on the containers VM with labels
    `self-hosted`, `linux`, `x64`, and `walshit-production`. Run it as a dedicated
-   unprivileged `walshit-deploy` account, preferably as an ephemeral/JIT runner
-   that is offline except for a reviewed deployment. Install `git` for the
-   freshness check. Do not add that account to the Docker or sudo groups.
+   unprivileged `walshit-deploy` account named `walshit-production-containers`.
+   This operating procedure uses a persistent registration plus a separate
+   native-`--once` unit; do not configure this runner as ephemeral/JIT. Keep the
+   generated service disabled and offline except for migration or recovery.
+   Install `git` for the freshness check. Do not add that account to the Docker
+   or sudo groups. Install the generated unit, then immediately stop and disable
+   it before allowing any matching workflow to queue:
+
+   ```sh
+   sudo bash -c \
+     'cd /home/walshit-deploy/actions-runner && ./svc.sh install walshit-deploy'
+   sudo systemctl disable --now \
+     actions.runner.walshg3-Homelab.walshit-production-containers.service
+   ```
 4. Install `compose.production.yaml` as root-owned mode `0644` at
    `/etc/walshit/compose.production.yaml` and install
    `scripts/deploy-production.sh` as root-owned mode `0755` at
@@ -239,6 +250,69 @@ Actions and outside this repository.
 6. Confirm the retained external network
    `walshit-landing-hugo-prod-9238dbfa_default` exists and still has the
    reviewed subnet before enabling the Environment.
+
+### Offline runner operating window
+
+Install the native one-job unit and bounded supervisor from a reviewed checkout.
+Both are root-owned. The helper is for an operator with sudo access; do not add
+it to the `walshit-deploy` sudoers rule.
+
+```sh
+sudo install --owner=root --group=root --mode=0644 \
+  systemd/walshit-production-runner-once.service \
+  /etc/systemd/system/walshit-production-runner-once.service
+sudo install --owner=root --group=root --mode=0755 \
+  scripts/run-production-runner-once.sh \
+  /usr/local/sbin/run-walshit-production-job-once
+sudo systemctl daemon-reload
+sudo systemctl disable walshit-production-runner-once.service
+```
+
+Before installation, confirm the generated runner service is already inactive;
+do not use `disable --now` as a shortcut while any worker might be running. The
+reviewed one-job unit invokes
+`/home/walshit-deploy/actions-runner/run.sh --once`, uses
+`KillMode=control-group`, has no restart policy, and remains disabled between
+operator windows. Upstream still supports `--once` for existing users but marks
+it for future deprecation; verify the installed runner version before initial
+installation and migrate this procedure to per-run JIT configuration before
+upstream removes the flag.
+
+Use this sequence for each production deployment:
+
+1. Confirm the only queued matching job is the reviewed Walshit production
+   deployment and that `walshit-production-containers` is offline and idle.
+2. Let hosted tests and immutable image publication finish successfully.
+3. Approve the protected `production` Environment for that exact workflow run.
+4. Open one bounded runner window:
+
+   ```sh
+   sudo /usr/local/sbin/run-walshit-production-job-once
+   ```
+
+5. Confirm the workflow and GitHub deployment status succeeded, production is
+   healthy on port 3003, the predecessor is stopped and retained, and the
+   runner service is disabled and inactive again.
+
+The helper serializes operators with a root-only lock and refuses to run unless
+both runner units are disabled/inactive with no runner process. It validates
+the one-job unit's user, native `--once` command, kill mode, SIGTERM stop
+signal, five-minute rollback timeout, and restart policy. It uses trusted
+absolute command paths and bounds every systemd call. It waits up to 10 minutes
+for one `Runner.Worker` and allows that job up to 45 minutes,
+five minutes longer than the workflow's own timeout. Native `--once` prevents
+listener from accepting a second job. `KillMode=control-group` and a bounded
+five-minute systemd stop let catchable deployment termination reach the
+rollback wrapper before systemd escalates.
+
+This mechanism does **not** atomically bind the runner to a GitHub run or job
+ID. The custom label and queue check remain part of the security boundary:
+restrict who can queue repository workflows, approve only the exact protected
+deployment, and do not open the runner window if any other matching job exists.
+The helper never enables services, approves environments, deploys directly, or
+removes retained containers. If no job arrives or the job fails, inspect the
+GitHub run before opening another window; do not leave the runner online while
+troubleshooting.
 
 The deploy job has a production concurrency lock and rechecks remote `main`
 immediately before invoking the wrapper, so a superseded queued run cannot

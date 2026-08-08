@@ -75,6 +75,8 @@
 !walshit-landing/compose.production.yaml
 !walshit-landing/scripts/
 !walshit-landing/scripts/**
+!walshit-landing/systemd/
+!walshit-landing/systemd/**
 
 # Keep Hugo build output and Python bytecode caches out of Git even
 # though the directories above are whitelisted.
