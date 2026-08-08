@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Repository-side contract tests for the Walshit CI/CD pipeline."""
 from pathlib import Path
+import fcntl
 import re
 import shlex
 import subprocess
@@ -12,6 +13,8 @@ REPO_ROOT = ROOT.parent
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "walshit.yml"
 COMPOSE = ROOT / "compose.production.yaml"
 DEPLOY = ROOT / "scripts" / "deploy-production.sh"
+RUNNER_SUPERVISOR = ROOT / "scripts" / "run-production-runner-once.sh"
+RUNNER_UNIT = ROOT / "systemd" / "walshit-production-runner-once.service"
 DOCKERFILE = ROOT / "Dockerfile.hugo"
 README = ROOT / "README.md"
 
@@ -242,6 +245,229 @@ on_exit 1
             self.assertIn(marker, self.text)
 
 
+class RunnerSupervisorContractTest(unittest.TestCase):
+    @staticmethod
+    def write_command(directory, name, text):
+        command = directory / name
+        command.write_text(text)
+        command.chmod(0o755)
+
+    def run_supervisor(self, systemctl_text, pgrep_text, *, sleep_text=None, hold_lock=False):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            fake_bin = temporary / "bin"
+            state = temporary / "state"
+            fake_bin.mkdir()
+            state.mkdir()
+
+            self.write_command(fake_bin, "id", "#!/bin/sh\nprintf '0\\n'\n")
+            self.write_command(fake_bin, "install", "#!/bin/sh\nexit 0\n")
+            self.write_command(fake_bin, "systemctl", systemctl_text)
+            self.write_command(fake_bin, "pgrep", pgrep_text)
+            self.write_command(
+                fake_bin,
+                "sleep",
+                sleep_text or "#!/bin/sh\nexit 0\n",
+            )
+
+            script_text = RUNNER_SUPERVISOR.read_text().replace(
+                'LOCK_DIR="/run/walshit"', f'LOCK_DIR="{state}"'
+            )
+            for command in ("id", "install", "systemctl", "pgrep", "sleep"):
+                script_text = script_text.replace(
+                    f"/usr/bin/{command}", str(fake_bin / command)
+                )
+            script = temporary / "run-production-runner-once.sh"
+            script.write_text(script_text)
+            script.chmod(0o755)
+
+            lock_handle = None
+            if hold_lock:
+                lock_handle = (state / "runner-window.lock").open("w")
+                fcntl.flock(lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+            try:
+                result = subprocess.run(
+                    ["bash", str(script)],
+                    env={
+                        "PATH": f"{fake_bin}:/usr/bin:/bin",
+                        "STATE": str(state),
+                    },
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=5,
+                )
+                events_path = state / "events"
+                events = events_path.read_text().splitlines() if events_path.exists() else []
+                return result, events, (state / "active").exists()
+            finally:
+                if lock_handle is not None:
+                    lock_handle.close()
+
+    def test_native_once_unit_and_supervisor_boundaries(self):
+        unit = RUNNER_UNIT.read_text()
+        for marker in (
+            "User=walshit-deploy",
+            "ExecStart=/home/walshit-deploy/actions-runner/run.sh --once",
+            "Restart=no",
+            "KillMode=control-group",
+            "KillSignal=SIGTERM",
+            "TimeoutStopSec=5min",
+        ):
+            self.assertIn(marker, unit)
+
+        script = RUNNER_SUPERVISOR.read_text()
+        for marker in (
+            'LOCK_DIR="/run/walshit"',
+            "/usr/bin/flock --nonblock",
+            "START_TIMEOUT_SECONDS=600",
+            "JOB_TIMEOUT_SECONDS=2700",
+            "STOP_TIMEOUT_SECONDS=310",
+            "trap on_exit EXIT",
+            "trap on_signal INT TERM",
+            "Runner.Worker",
+            "KillSignal",
+            "TimeoutStopUSec",
+            "--once",
+        ):
+            self.assertIn(marker, script)
+        self.assertNotIn("sleep 3", script)
+
+    def test_supervisor_runs_native_once_unit_then_restores_offline_state(self):
+        systemctl = """#!/bin/sh
+service="$2"
+case "$1" in
+  show)
+    property=${3#--property=}
+    case "$property" in
+      User) printf 'walshit-deploy\n' ;;
+      ExecStart) printf '{ path=/home/walshit-deploy/actions-runner/run.sh ; argv[]=/home/walshit-deploy/actions-runner/run.sh --once ; }\n' ;;
+      KillMode) printf 'control-group\n' ;;
+      KillSignal) printf '15\n' ;;
+      TimeoutStopUSec) printf '5min\n' ;;
+      Restart) printf 'no\n' ;;
+      Result) printf 'success\n' ;;
+      *) exit 99 ;;
+    esac ;;
+  is-enabled) printf 'disabled\n' ;;
+  is-active)
+    if [ "$service" = "walshit-production-runner-once.service" ] && [ -f "$STATE/active" ]; then
+      count=0
+      [ ! -f "$STATE/active-checks" ] || count=$(cat "$STATE/active-checks")
+      count=$((count + 1))
+      printf '%s\n' "$count" > "$STATE/active-checks"
+      if [ "$count" -ge 2 ]; then rm -f "$STATE/active"; printf 'inactive\n'; else printf 'active\n'; fi
+    else
+      printf 'inactive\n'
+    fi ;;
+  start) : > "$STATE/active"; printf 'start\n' >> "$STATE/events" ;;
+  stop) rm -f "$STATE/active"; printf 'stop\n' >> "$STATE/events" ;;
+  *) exit 99 ;;
+esac
+"""
+        pgrep = """#!/bin/sh
+if [ -f "$STATE/active" ]; then exit 0; fi
+exit 1
+"""
+        result, events, active = self.run_supervisor(systemctl, pgrep)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(events, ["start", "stop"])
+        self.assertFalse(active)
+        self.assertIn("service is disabled and inactive", result.stdout)
+
+    def test_supervisor_does_not_touch_an_already_active_unit(self):
+        systemctl = """#!/bin/sh
+case "$1" in
+  show)
+    case "${3#--property=}" in
+      User) printf 'walshit-deploy\n' ;;
+      ExecStart) printf '/home/walshit-deploy/actions-runner/run.sh --once\n' ;;
+      KillMode) printf 'control-group\n' ;;
+      KillSignal) printf '15\n' ;;
+      TimeoutStopUSec) printf '5min\n' ;;
+      Restart) printf 'no\n' ;;
+      *) exit 99 ;;
+    esac ;;
+  is-enabled) printf 'disabled\n' ;;
+  is-active)
+    if [ "$2" = "walshit-production-runner-once.service" ]; then printf 'active\n'; else printf 'inactive\n'; fi ;;
+  stop) printf 'stop\n' >> "$STATE/events" ;;
+  *) exit 99 ;;
+esac
+"""
+        result, events, _ = self.run_supervisor(systemctl, "#!/bin/sh\nexit 1\n")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(events, [])
+
+    def test_supervisor_lock_blocks_competing_invocation(self):
+        result, events, _ = self.run_supervisor(
+            """#!/bin/sh
+printf 'unexpected systemctl\n' >> "$STATE/events"
+exit 99
+""",
+            "#!/bin/sh\nexit 1\n",
+            hold_lock=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(events, [])
+        self.assertIn("already owns the runner window", result.stderr)
+
+    def test_supervisor_stops_and_fails_when_signaled(self):
+        systemctl = """#!/bin/sh
+case "$1" in
+  show)
+    case "${3#--property=}" in
+      User) printf 'walshit-deploy\n' ;;
+      ExecStart) printf '/home/walshit-deploy/actions-runner/run.sh --once\n' ;;
+      KillMode) printf 'control-group\n' ;;
+      KillSignal) printf '15\n' ;;
+      TimeoutStopUSec) printf '5min\n' ;;
+      Restart) printf 'no\n' ;;
+      *) exit 99 ;;
+    esac ;;
+  is-enabled) printf 'disabled\n' ;;
+  is-active) if [ -f "$STATE/active" ]; then printf 'active\n'; else printf 'inactive\n'; fi ;;
+  start) : > "$STATE/active"; printf 'start\n' >> "$STATE/events" ;;
+  stop) rm -f "$STATE/active"; printf 'stop\n' >> "$STATE/events" ;;
+  *) exit 99 ;;
+esac
+"""
+        pgrep = """#!/bin/sh
+[ -f "$STATE/active" ]
+"""
+        signal_sleep = """#!/bin/sh
+kill -TERM "$PPID"
+exit 0
+"""
+        result, events, active = self.run_supervisor(
+            systemctl, pgrep, sleep_text=signal_sleep
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("start", events)
+        self.assertIn("stop", events)
+        self.assertFalse(active)
+
+        failing_stop = systemctl.replace(
+            """  stop) rm -f "$STATE/active"; printf 'stop
+' >> "$STATE/events" ;;""",
+            """  stop) printf 'stop-failed
+' >> "$STATE/events"; exit 1 ;;""",
+        )
+        result, events, active = self.run_supervisor(
+            failing_stop, pgrep, sleep_text=signal_sleep
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("stop-failed", events, result.stderr)
+        self.assertTrue(active)
+        self.assertIn("CRITICAL: failed to restore", result.stderr)
+
+
 class BuildMetadataContractTest(unittest.TestCase):
     def test_builder_can_write_generated_output_with_legacy_or_buildkit_builders(self):
         text = DOCKERFILE.read_text()
@@ -271,6 +497,26 @@ class DocumentationContractTest(unittest.TestCase):
             "/run/walshit/production.lock",
             "same-SHA retry",
             "Install `git`",
+            "do not configure this runner as ephemeral/JIT",
+            "svc.sh install walshit-deploy",
+        ):
+            self.assertIn(marker, text)
+
+    def test_bounded_runner_supervisor_install_and_use_are_documented(self):
+        text = README.read_text()
+        for marker in (
+            "/usr/local/sbin/run-walshit-production-job-once",
+            "/etc/systemd/system/walshit-production-runner-once.service",
+            "install --owner=root --group=root --mode=0755",
+            "install --owner=root --group=root --mode=0644",
+            "run.sh --once",
+            "KillMode=control-group",
+            "does **not** atomically bind",
+            "Confirm the only queued matching job",
+            "Approve the protected `production` Environment",
+            "disabled and inactive",
+            "10 minutes",
+            "45 minutes",
         ):
             self.assertIn(marker, text)
 
@@ -279,6 +525,7 @@ class DocumentationContractTest(unittest.TestCase):
         self.assertIn("!.github/workflows/walshit.yml", root_ignore)
         self.assertIn("!actionlint.yaml", root_ignore)
         self.assertIn("!walshit-landing/compose.production.yaml", root_ignore)
+        self.assertIn("!walshit-landing/systemd/**", root_ignore)
 
     def test_actionlint_knows_the_production_runner_label(self):
         actionlint = (REPO_ROOT / "actionlint.yaml").read_text()
