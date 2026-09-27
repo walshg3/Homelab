@@ -277,6 +277,21 @@ test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0
 
 Confirm the HTML response carries the CSP, referrer, MIME-sniffing, and
 permissions headers. Confirm JSON carries `Cache-Control: no-store, max-age=0`.
+
+The page also requests `/status/v2/incidents.json` for resolved incidents and
+completed maintenance. Verify its schema version `"2"`, exact `generated_at`
+match with `summary.json`, descending resolved times, and freshness within
+180 seconds. The archive is an independent display: an unavailable, stale, or
+incoherent archive shows "Incident archive unavailable" while a valid summary
+and history still show current status. A fresh same-generation archive stays
+visible during revalidation; a new summary generation hides it until the
+matching archive arrives. The static fallback and noscript copy continue to
+describe the archive as unavailable when live data cannot be verified.
+The HTML currently references `status.css` and `status.js` with cache version
+`20260926-history2`; verify that version with the reviewed assets. Local tests
+cover the contract and fallback in `test_incident_frontend.py` and
+`test_web_source.py`; `scripts/render_check.py` covers rendered archive states.
+
 Open `http://127.0.0.1:3015/` in a local browser and verify that unknown routes,
 unknown JSON/status paths, and dotfiles return 404. The retired `/status/v1/*`
 prefix must return 404 along with `/status/v2/other.json`, `/status/v2/`, and

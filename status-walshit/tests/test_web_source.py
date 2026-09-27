@@ -64,12 +64,12 @@ class WebSourceTests(unittest.TestCase):
         source = path.read_text(encoding="utf-8")
         self.assertEqual(
             set(re.findall(r'["\'](/status/v2/[^"\']+)["\']', source)),
-            {"/status/v2/summary.json", "/status/v2/history.json"},
+            {"/status/v2/summary.json", "/status/v2/history.json", "/status/v2/incidents.json"},
         )
         self.assertIn("REFRESH_INTERVAL_MS = 60_000", source)
         self.assertRegex(source, r"setInterval\s*\(\s*loadStatus\s*,\s*REFRESH_INTERVAL_MS\s*\)")
         self.assertIn('document.addEventListener("DOMContentLoaded", start)', source)
-        self.assertNotIn("incidents.json", source)
+        self.assertIn("fetchJsonWithDeadline(windowObject, INCIDENTS_PATH)", source)
 
     def test_status_refresh_is_uncached_bounded_race_safe_and_deduplicated(self):
         source = (WEB / "status.js").read_text(encoding="utf-8")
@@ -77,20 +77,23 @@ class WebSourceTests(unittest.TestCase):
         self.assertIn("new windowObject.AbortController()", source)
         self.assertIn('cache: "no-store"', source)
         self.assertIn("signal: controller.signal", source)
-        self.assertIn("fetch(SUMMARY_PATH, requestOptions)", source)
-        self.assertIn("fetch(HISTORY_PATH, requestOptions)", source)
+        self.assertIn("fetchJsonWithDeadline(windowObject, SUMMARY_PATH)", source)
+        self.assertIn("fetchJsonWithDeadline(windowObject, HISTORY_PATH)", source)
+        self.assertIn("Promise.race", source)
+        self.assertIn("response.json()", source)
         self.assertIn("const generation = ++requestGeneration", source)
         self.assertGreaterEqual(source.count("generation !== requestGeneration"), 2)
         self.assertRegex(source, r"finally\s*\{\s*windowObject\.clearTimeout\(timeoutId\)")
         self.assertIn("lastSuccessfulFingerprint = null", source)
         self.assertIn("fingerprintViewModel(model)", source)
-        self.assertIn("fingerprint === lastSuccessfulFingerprint", source)
+        self.assertIn("fingerprint !== lastSuccessfulFingerprint", source)
+        self.assertIn("fingerprint !== lastArchiveFingerprint", source)
 
     def test_no_inline_script_or_style(self):
         scripts = re.findall(r'<script\s+([^>]*)></script>', self.html)
         self.assertEqual(
             scripts,
-            ['src="navigation.js" defer', 'src="status.js" defer'],
+            ['src="navigation.js" defer', 'src="status.js?v=20260926-history2" defer'],
         )
         self.assertNotRegex(self.html, r"(?i)<style\b")
         self.assertNotRegex(self.html, r"(?i)\sstyle\s*=")
@@ -234,7 +237,7 @@ class WebSourceTests(unittest.TestCase):
         self.assertNotRegex(self.html, r"(?i)<form\b|<input\b|<select\b|<textarea\b")
         self.assertRegex(
             self.html,
-            r'<link\s+rel="stylesheet"\s+href="status\.css\?v=20260804-typography1">',
+            r'<link\s+rel="stylesheet"\s+href="status\.css\?v=20260926-history2">',
         )
         links = re.findall(r'(?:href|src)="([^"]+)"', self.html)
         self.assertEqual(
@@ -244,9 +247,9 @@ class WebSourceTests(unittest.TestCase):
                 "#history",
                 "fonts/libre-baskerville-variable.woff2",
                 "walsh-ticket-crest.png?v=20260801",
-                "status.css?v=20260804-typography1",
+                "status.css?v=20260926-history2",
                 "navigation.js",
-                "status.js",
+                "status.js?v=20260926-history2",
                 "https://walshit.com/",
                 "https://walshit.com/updates/",
             },
@@ -259,9 +262,9 @@ class WebSourceTests(unittest.TestCase):
             [
                 "fonts/libre-baskerville-variable.woff2",
                 "walsh-ticket-crest.png?v=20260801",
-                "status.css?v=20260804-typography1",
+                "status.css?v=20260926-history2",
                 "navigation.js",
-                "status.js",
+                "status.js?v=20260926-history2",
             ],
         )
         external_anchors = re.findall(r'<a[^>]+href="(https://[^"]+)"', self.html)
@@ -283,7 +286,7 @@ class WebSourceTests(unittest.TestCase):
             'id="overall-state-label"',
             'id="generated-at"',
             'id="active-board"',
-            "Archived incident data is unavailable because no archive contract is loaded.",
+            "Filed incidents and completed maintenance are being checked.",
             "Live status rendering requires JavaScript.",
             '<noscript>',
             '<a href="https://walshit.com/">Return to Walshit.com</a>',
@@ -312,7 +315,7 @@ class WebSourceTests(unittest.TestCase):
 
     def test_load_failures_are_generic_and_fail_closed(self):
         source = (WEB / "status.js").read_text(encoding="utf-8")
-        self.assertIn("responses.every((response) => response.ok)", source)
+        self.assertIn("requireCondition(response.ok)", source)
         self.assertIn("response.json()", source)
         self.assertRegex(
             source,
@@ -369,7 +372,7 @@ class WebSourceTests(unittest.TestCase):
         self.assertIn('class="history-section"', self.html)
         self.assertIn('id="history"', self.html)
         self.assertIn("No active-event data is available yet.", self.html)
-        self.assertIn("No archived incidents are loaded.", self.html)
+        self.assertIn("Loading incident archive.", self.html)
         self.assertIn("Availability history uses measured records only.", self.html)
         self.assertNotIn("History will appear after monitoring begins.", self.html)
         self.assertNotRegex(self.html, r"\b\d{2,3}\.\d{1,2}%|90 days ago")
@@ -503,6 +506,21 @@ class WebSourceTests(unittest.TestCase):
         ):
             with self.subTest(declaration=declaration):
                 self.assertIn(declaration, declarations)
+
+    def test_archive_metadata_does_not_change_availability_label_layout_or_focus(self):
+        for selector in re.findall(r"([^{}]+)\{[^{}]*\}", self.css):
+            if ".history-meta" in selector and ".history-placeholder > .history-meta" not in selector:
+                for part in selector.split(","):
+                    if ".history-meta" in part:
+                        self.assertIn(".history-card ", part)
+        self.assertNotRegex(self.css, r"\.history-timeline\s+summary:focus-visible")
+        self.assertIn("outline: 3px solid var(--yellow)", self.css)
+
+    def test_operations_describes_archive_fallback_freshness_and_cache_version(self):
+        operations = (ROOT / "runbooks" / "operations.md").read_text(encoding="utf-8")
+        for text in ("/status/v2/incidents.json", "independent", "180 seconds", "history2", "test_incident_frontend", "render_check.py"):
+            with self.subTest(text=text):
+                self.assertIn(text, operations)
 
     def test_history_strip_resets_placeholder_positioning_in_normal_flow(self):
         history_strip_rule = re.search(

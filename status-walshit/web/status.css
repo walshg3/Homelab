@@ -775,6 +775,31 @@ main {
   font-size: 0.78rem;
 }
 
+.history-card {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 1.4rem;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid var(--ink);
+}
+.history-card:last-child { border-bottom: 0; }
+.history-card .history-date { font-size: 1rem; }
+.history-card .history-copy, .history-card .history-body, .history-card .history-meta, .history-card .history-update {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.history-card .history-copy > .eyebrow { margin-bottom: 0.5rem; }
+.history-card .history-meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.25rem 0.8rem; margin: 1rem 0; font-size: 0.78rem; }
+.history-card .history-meta dt { font-weight: 900; text-transform: uppercase; }
+.history-card .history-meta dd { margin: 0; }
+.history-card .history-timeline { margin-top: 1rem; border-top: 1px dashed var(--ink); padding-top: 0.7rem; }
+.history-card .history-timeline summary { cursor: pointer; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; min-height: 44px; display: flex; align-items: center; }
+.history-card .history-updates { margin: 0.7rem 0 0; padding-left: 1.4rem; }
+.history-card .history-update { padding: 0.45rem 0; }
+.history-card .history-update .event-time { margin-right: 0.6rem; }
+.history-card .history-update-status { font-weight: 900; text-transform: uppercase; }
+.history-card .history-update p { margin-top: 0.25rem; }
+
 .coverage {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -928,6 +953,8 @@ footer p {
   .ticket-event {
     grid-template-columns: 1fr;
   }
+
+  .history-card { grid-template-columns: 1fr; gap: 0.6rem; }
 
   .event-stub {
     display: flex;

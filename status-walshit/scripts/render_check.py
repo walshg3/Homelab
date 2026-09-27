@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
 FIXTURES = ROOT / "fixtures"
 CHROMIUM_CANDIDATES = ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable")
-EXPECTED_SCENARIO_COUNT = 9
+EXPECTED_SCENARIO_COUNT = 12
 FONT_REQUESTS = {
     "/fonts/archivo-narrow-italic-variable.woff2",
     "/fonts/archivo-narrow-variable.woff2",
@@ -35,6 +35,7 @@ EXPECTED_REQUESTS = {
     "/status.js",
     "/status/v2/summary.json",
     "/status/v2/history.json",
+    "/status/v2/incidents.json",
     "/walsh-ticket-crest.png",
     "/favicon.ico",
 } | FONT_REQUESTS
@@ -95,10 +96,14 @@ def fixture_server(
     clock_ms,
     fail_history=False,
     malformed_summary=False,
+    incidents=None,
+    fail_incidents=False,
 ):
     requests = []
     summary_bytes = json.dumps(summary, separators=(",", ":")).encode()
     history_bytes = json.dumps(history, separators=(",", ":")).encode()
+    incidents = incidents if incidents is not None else {"schema_version": "2", "generated_at": summary["generated_at"], "events": []}
+    incidents_bytes = json.dumps(incidents, separators=(",", ":")).encode()
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -111,6 +116,8 @@ def fixture_server(
                 if fail_history:
                     return self.send_bytes(503, "text/plain", b"unavailable")
                 return self.send_bytes(200, "application/json", history_bytes)
+            if path == "/status/v2/incidents.json":
+                return self.send_bytes(503 if fail_incidents else 200, "application/json", incidents_bytes)
             if path == "/":
                 return self.send_file(WEB / "index.html")
             if path == "/status.js":
@@ -174,6 +181,8 @@ def render(
     clock_ms,
     fail_history=False,
     malformed_summary=False,
+    incidents=None,
+    fail_incidents=False,
 ):
     with tempfile.TemporaryDirectory(prefix="status-render-check-") as profile:
         with fixture_server(
@@ -182,6 +191,8 @@ def render(
             clock_ms,
             fail_history,
             malformed_summary,
+            incidents,
+            fail_incidents,
         ) as (port, requests):
             command = [
                 chromium,
@@ -214,6 +225,7 @@ def render(
     assert set(recorded) >= {
         "/status/v2/summary.json",
         "/status/v2/history.json",
+        "/status/v2/incidents.json",
     }, f"status endpoints were not both requested: {recorded}"
     document = NodeCollector()
     document.feed(completed.stdout)
@@ -266,7 +278,10 @@ def assert_common_valid(document, summary):
     assert "90 days on record" not in text
     assert "Measured availability and missing data are shown separately" in text
     assert "missing periods are never filled with invented history" in text
-    assert "Availability history uses measured records only." in text
+    if "hidden" in document.by_id("stale-warning")["attrs"]:
+        assert "No resolved incidents or completed maintenance." in text
+    else:
+        assert "Incident archive unavailable." in text
     assert "This report covers public availability and incidents" in text
     assert "No current condition is asserted here." not in text
     assert "No past availability or incident record is claimed" not in text
@@ -407,6 +422,35 @@ def run_checks():
     malformed_body = next(node for node in malformed.nodes if node["tag"] == "body")
     assert malformed_body["attrs"].get("data-status-render") == "unavailable"
     scenarios.append("malformed-json")
+
+    archive = load_fixture("incidents.ups-maintenance.json")
+    archived_summary = deepcopy(load_fixture("summary.operational.json"))
+    archived_summary["generated_at"] = archive["generated_at"]
+    archived_history = deepcopy(history)
+    archived_history["generated_at"] = archive["generated_at"]
+    for component in archived_history["components"]:
+        component["days"] = []
+    for component in archived_summary["components"]:
+        component["history_days_available"] = 0
+    archive_clock = int(__import__("datetime").datetime.fromisoformat(archive["generated_at"].replace("Z", "+00:00")).timestamp() * 1000)
+    filed = render(chromium, archived_summary, archived_history, archive_clock, incidents=archive)
+    cards = filed.by_class("history-card")
+    assert len(cards) == 1
+    card_text = NodeCollector.text(cards[0])
+    for expected in (archive["events"][0]["title"], "Maintenance", "completed", "Watch", "Home base", "Requests", "Audiobooks", "Walshit.com"):
+        assert expected.casefold() in card_text.casefold(), expected
+    assert len(filed.by_class("history-update")) == 2
+    scenarios.append("filed-maintenance")
+
+    empty = render(chromium, archived_summary, archived_history, archive_clock)
+    assert "No resolved incidents or completed maintenance." in NodeCollector.text(empty.by_class("history-empty")[0])
+    scenarios.append("empty-archive")
+
+    failed_archive = render(chromium, archived_summary, archived_history, archive_clock, fail_incidents=True)
+    assert "Incident archive unavailable." in NodeCollector.text(failed_archive.by_class("history-empty")[0])
+    body = next(node for node in failed_archive.nodes if node["tag"] == "body")
+    assert body["attrs"].get("data-status-render") == "ready"
+    scenarios.append("archive-failure-independent")
     assert len(scenarios) == EXPECTED_SCENARIO_COUNT
     return scenarios
 

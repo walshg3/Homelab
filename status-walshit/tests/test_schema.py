@@ -540,6 +540,8 @@ class FixtureSafetyTests(unittest.TestCase):
             {path.name for path in fixture_paths},
             {
                 "history.sample.json",
+                "incidents.sample.json",
+                "incidents.ups-maintenance.json",
                 "summary.incident.json",
                 "summary.maintenance.json",
                 "summary.operational.json",

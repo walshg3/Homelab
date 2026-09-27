@@ -12,6 +12,7 @@
 
   const SUMMARY_PATH = "/status/v2/summary.json";
   const HISTORY_PATH = "/status/v2/history.json";
+  const INCIDENTS_PATH = "/status/v2/incidents.json";
   const REFRESH_INTERVAL_MS = 60_000;
   const FETCH_TIMEOUT_MS = 10_000;
   const STALE_AFTER_MS = 180_000;
@@ -28,6 +29,7 @@
     incident: new Set(["investigating", "identified", "monitoring"]),
     maintenance: new Set(["planned", "in-progress"]),
   });
+  const CLOSED_EVENT_STATUSES = Object.freeze({incident: "resolved", maintenance: "completed"});
   const STATE_PRESENTATIONS = Object.freeze({
     operational: Object.freeze({label: "Operational", className: "state-operational"}),
     degraded: Object.freeze({label: "Degraded", className: "state-degraded"}),
@@ -65,6 +67,13 @@
       Number(offsetHour) <= 23 && Number(offsetMinute) <= 59 && Number.isFinite(Date.parse(value));
   }
 
+  function timestampMicros(value) {
+    const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+    requireCondition(match && isTimestamp(value));
+    return BigInt(Date.parse(match[1] + match[3])) * 1000n +
+      BigInt((match[2] || "").slice(0, 6).padEnd(6, "0"));
+  }
+
   function isDate(value) {
     if (typeof value !== "string" || value.startsWith("0000-") ||
       !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -82,7 +91,7 @@
       "affected_components", "updates",
     ]));
     requireCondition(typeof event.id === "string" && /^[a-z0-9][a-z0-9-]{2,63}$/.test(event.id));
-    requireCondition(Object.hasOwn(EVENT_STATUSES, event.kind));
+    requireCondition(typeof event.kind === "string" && Object.hasOwn(EVENT_STATUSES, event.kind));
     requireCondition(EVENT_STATUSES[event.kind].has(event.status));
     requireCondition(isText(event.title) && isText(event.body));
     requireCondition(isTimestamp(event.started_at) && isTimestamp(event.updated_at));
@@ -168,6 +177,93 @@
     requireCondition(new Set(ids).size === COMPONENT_REGISTRY.length &&
       COMPONENT_REGISTRY.every((entry) => ids.includes(entry.id)));
     return history;
+  }
+
+  function isPublicNarrative(value) {
+    if (!isText(value)) return false;
+    if (/(?:[a-z][a-z0-9+.-]*:\/\/|(?:https?|ftp|file|ssh|mailto|data|javascript):)/i.test(value)) return false;
+    if (/\blocal[h]ost\b/i.test(value)) return false;
+    if (/\b(?:api[_-]?key|client[_-]?secret|secret|password|passphrase|credentials?|authorization|(?:access|refresh)[_-]?tokens?|tokens?)\b\s*[:=]/i.test(value)) return false;
+    if (/\b(?:bearer|basic)\s+[a-z0-9+/._=-]{16,}/i.test(value)) return false;
+    if (/-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,})\b/.test(value)) return false;
+    if (/(?:^|[\s"'=:(])\/(?:home|root|srv|mnt|opt|etc|var\/lib|usr\/local|tmp)(?:\/|\b)/i.test(value)) return false;
+    if (/(?:^|[^a-z0-9])[a-z]:\\|\\\\[a-z0-9._-]+\\/i.test(value)) return false;
+    if (/\b(?:media|movie|series|episode|book|library)[_-]?(?:title|name)\s*[:=]|\b(?:now[_-]?playing|current[_-]?(?:media|movie|series|episode|book)|library[_-]?item)\s*[:=]/i.test(value)) return false;
+    if (/\b(?:operator|owner|admin|person|full)[_-]?name\s*[:=]|\b(?:contact[_-]?person|personal[_-]?identity)\s*[:=]/i.test(value)) return false;
+    if (/\b(?:operator|owner|admin|administrator)\s+[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+)+\b/.test(value)) return false;
+    if (/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(value)) return false;
+    if (/\b(?:recovery|restore|failover|backup)(?:[_-]|\s+)(?:key|code|path|command|host|target|procedure|steps?|instructions?|details?)\b/i.test(value)) return false;
+    if (/\b(?:10|127|192\.168|169\.254)\.\d{1,3}\.\d{1,3}(?:\.\d{1,3})?\b|\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b/i.test(value)) return false;
+    const ipv6Candidates = value.match(/(?<![0-9a-z:.])(?:[0-9a-f]{0,4}:){2,}[0-9a-f]{0,4}(?![0-9a-z:])/gi) || [];
+    if (ipv6Candidates.some(isRestrictedIpv6)) return false;
+    const hostnames = value.match(/(?:[a-z0-9-]+\.)+[a-z]{2,}/gi) || [];
+    if (hostnames.some((host) => host.toLowerCase() !== "walshit.com")) return false;
+    if (/(?:\/\/|\\|\.)walshit\.com|walshit\.com(?:[\/?#:\\]|%(?:2f|3f|23|3a|5c))/i.test(value)) return false;
+    return true;
+  }
+
+  function isRestrictedIpv6(candidate) {
+    const parts = candidate.split("::");
+    if (parts.length > 2) return false;
+    const left = parts[0] ? parts[0].split(":") : [];
+    const right = parts.length === 2 && parts[1] ? parts[1].split(":") : [];
+    const supplied = [...left, ...right];
+    if (supplied.some((part) => !/^[0-9a-f]{1,4}$/i.test(part))) return false;
+    if (parts.length === 1 && supplied.length !== 8) return false;
+    if (parts.length === 2 && supplied.length >= 8) return false;
+    const groups = [...left, ...Array(parts.length === 2 ? 8 - supplied.length : 0).fill("0"), ...right]
+      .map((part) => parseInt(part, 16));
+    return (groups[0] >= 0xfc00 && groups[0] <= 0xfdff) ||
+      (groups[0] >= 0xfe80 && groups[0] <= 0xfebf) ||
+      (groups.slice(0, 7).every((part) => part === 0) && groups[7] === 1);
+  }
+
+  function validateIncidents(incidents, summaryGeneratedAt, nowMs) {
+    requireCondition(hasExactKeys(incidents, ["schema_version", "generated_at", "events"]));
+    requireCondition(incidents.schema_version === "2" && isTimestamp(incidents.generated_at));
+    const summary = isObject(summaryGeneratedAt) ? summaryGeneratedAt : null;
+    const summaryTime = summary ? summary.generated_at : summaryGeneratedAt;
+    if (summaryTime !== undefined) requireCondition(isTimestamp(summaryTime) && incidents.generated_at === summaryTime);
+    if (nowMs !== undefined) requireCondition(Number.isFinite(nowMs) &&
+      timestampMicros(incidents.generated_at) <= BigInt(Math.trunc(nowMs * 1000)) &&
+      BigInt(Math.trunc(nowMs * 1000)) - timestampMicros(incidents.generated_at) <= BigInt(STALE_AFTER_MS) * 1000n);
+    requireCondition(Array.isArray(incidents.events));
+    if (summary) requireCondition(Array.isArray(summary.active_events) &&
+      !summary.active_events.some((active) => incidents.events.some((closed) => active.id === closed.id)));
+    const ids = new Set();
+    let previousResolved = null;
+    let previousId = "";
+    incidents.events.forEach((event) => {
+      requireCondition(hasExactKeys(event, ["id", "kind", "status", "title", "body", "started_at", "updated_at", "resolved_at", "affected_components", "updates"]));
+      requireCondition(typeof event.id === "string" && /^[a-z0-9][a-z0-9-]{2,63}$/.test(event.id) && !ids.has(event.id));
+      ids.add(event.id);
+      requireCondition(typeof event.kind === "string" && Object.hasOwn(CLOSED_EVENT_STATUSES, event.kind));
+      requireCondition(event.status === CLOSED_EVENT_STATUSES[event.kind]);
+      requireCondition(isPublicNarrative(event.title) && isPublicNarrative(event.body));
+      requireCondition(isTimestamp(event.started_at) && isTimestamp(event.updated_at) && isTimestamp(event.resolved_at));
+      const start = timestampMicros(event.started_at);
+      const resolved = timestampMicros(event.resolved_at);
+      requireCondition(start <= resolved && timestampMicros(event.updated_at) === resolved && resolved <= timestampMicros(incidents.generated_at));
+      requireCondition(previousResolved === null || resolved < previousResolved || (resolved === previousResolved && event.id >= previousId));
+      previousResolved = resolved;
+      previousId = event.id;
+      requireCondition(Array.isArray(event.affected_components) && event.affected_components.length > 0);
+      requireCondition(new Set(event.affected_components).size === event.affected_components.length);
+      requireCondition(event.affected_components.every((id) => registryName(id)));
+      requireCondition(Array.isArray(event.updates) && event.updates.length > 0);
+      let previousUpdate = null;
+      event.updates.forEach((update, index) => {
+        requireCondition(hasExactKeys(update, ["at", "status", "body"]));
+        requireCondition(isTimestamp(update.at) && isPublicNarrative(update.body));
+        requireCondition(index === event.updates.length - 1
+          ? update.status === event.status : EVENT_STATUSES[event.kind].has(update.status));
+        const at = timestampMicros(update.at);
+        requireCondition(at >= start && at <= resolved && (previousUpdate === null || at > previousUpdate));
+        previousUpdate = at;
+      });
+      requireCondition(previousUpdate === resolved);
+    });
+    return incidents;
   }
 
   function formatPercentage(value) {
@@ -435,6 +531,73 @@
     events.forEach((event, index) => renderEvent(document, board, event, components, index));
   }
 
+  function renderArchiveMessage(document, heading, body, label) {
+    const section = document.querySelector(".history-section");
+    if (!section) return;
+    section.querySelector(".section-head > p").textContent = label;
+    const list = section.querySelector(".history-list");
+    clearElement(list);
+    const card = createElement(document, "article", "history-empty");
+    card.appendChild(createElement(document, "p", "history-date", "—"));
+    const copy = createElement(document, "div", "history-copy");
+    copy.appendChild(createElement(document, "h3", "", heading));
+    copy.appendChild(createElement(document, "p", "", body));
+    card.appendChild(copy);
+    list.appendChild(card);
+  }
+
+  function renderIncidents(document, incidents) {
+    if (!incidents.events.length) {
+      renderArchiveMessage(document, "No resolved incidents or completed maintenance.", "The incident archive contains no resolved incidents or completed maintenance.", "Archive empty");
+      return;
+    }
+    const section = document.querySelector(".history-section");
+    section.querySelector(".section-head > p").textContent = `${incidents.events.length} filed ${incidents.events.length === 1 ? "event" : "events"}`;
+    const list = section.querySelector(".history-list");
+    clearElement(list);
+    incidents.events.forEach((event, index) => {
+      const card = createElement(document, "article", `history-card kind-${event.kind}`);
+      const titleId = `filed-event-title-${index + 1}`;
+      card.setAttribute("aria-labelledby", titleId);
+      const date = createElement(document, "p", "history-date");
+      date.appendChild(createTime(document, event.resolved_at));
+      card.appendChild(date);
+      const copy = createElement(document, "div", "history-copy");
+      copy.appendChild(createElement(document, "p", "eyebrow", `${event.kind} · ${event.status}`));
+      const title = createElement(document, "h3", "", event.title);
+      title.id = titleId;
+      copy.appendChild(title);
+      copy.appendChild(createElement(document, "p", "history-body", event.body));
+      const meta = createElement(document, "dl", "history-meta");
+      [["Started", createTime(document, event.started_at)], ["Resolved", createTime(document, event.resolved_at)],
+        ["Affected", event.affected_components.map(registryName).join(", ")]].forEach(([term, value]) => {
+        meta.appendChild(createElement(document, "dt", "", term));
+        const dd = createElement(document, "dd");
+        dd.appendChild(typeof value === "string" ? document.createTextNode(value) : value);
+        meta.appendChild(dd);
+      });
+      copy.appendChild(meta);
+      const details = createElement(document, "details", "history-timeline");
+      details.appendChild(createElement(document, "summary", "", `Update timeline (${event.updates.length})`));
+      const updates = createElement(document, "ol", "history-updates");
+      event.updates.forEach((update) => {
+        const item = createElement(document, "li", "history-update");
+        item.appendChild(createTime(document, update.at));
+        item.appendChild(createElement(document, "span", "history-update-status", update.status.replace("-", " ")));
+        item.appendChild(createElement(document, "p", "", update.body));
+        updates.appendChild(item);
+      });
+      details.appendChild(updates);
+      copy.appendChild(details);
+      card.appendChild(copy);
+      list.appendChild(card);
+    });
+  }
+
+  function renderArchiveUnavailable(document) {
+    renderArchiveMessage(document, "Incident archive unavailable.", "Filed incident data could not be verified. Please try again later.", "Archive unavailable");
+  }
+
   function renderStatus(document, model) {
     document.body.setAttribute("data-status-render", "ready");
     document.getElementById("load-error").hidden = true;
@@ -494,40 +657,95 @@
       "No claim about current incidents or maintenance can be made.",
       true,
     );
+    renderArchiveUnavailable(document);
+  }
+
+  async function fetchJsonWithDeadline(windowObject, path) {
+      const controller = new windowObject.AbortController();
+      let timeoutId;
+      const deadline = new Promise((_resolve, reject) => {
+        timeoutId = windowObject.setTimeout(() => {
+          controller.abort();
+          reject(new Error("Status request timed out"));
+        }, FETCH_TIMEOUT_MS);
+      });
+      try {
+        return await Promise.race([
+          (async () => {
+            const response = await windowObject.fetch(path, {cache: "no-store", signal: controller.signal});
+            requireCondition(response.ok);
+            return response.json();
+          })(),
+          deadline,
+        ]);
+      } finally {
+        windowObject.clearTimeout(timeoutId);
+      }
   }
 
   function bootstrap(windowObject) {
-    const {document, fetch, setInterval} = windowObject;
+    const {document, setInterval} = windowObject;
     let requestGeneration = 0;
     let lastSuccessfulFingerprint = null;
+    let lastArchiveFingerprint = null;
+    let displayedArchive = null;
+
+    function showArchiveLoading() {
+      displayedArchive = null;
+      lastArchiveFingerprint = null;
+      renderArchiveMessage(document, "Loading incident archive.", "Filed incidents and completed maintenance are being checked.", "Archive loading");
+    }
 
     async function loadStatus() {
       const generation = ++requestGeneration;
-      const controller = new windowObject.AbortController();
-      const timeoutId = windowObject.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-      const requestOptions = {cache: "no-store", signal: controller.signal};
+      let summaryDocument = null;
+      const startingNowMs = Number.isFinite(windowObject.__STATUS_NOW_MS__)
+        ? windowObject.__STATUS_NOW_MS__ : Date.now();
+      if (!displayedArchive || timestampMicros(displayedArchive.generated_at) > BigInt(Math.trunc(startingNowMs * 1000)) ||
+          BigInt(Math.trunc(startingNowMs * 1000)) - timestampMicros(displayedArchive.generated_at) > BigInt(STALE_AFTER_MS) * 1000n) {
+        showArchiveLoading();
+      }
+      const archiveResult = fetchJsonWithDeadline(windowObject, INCIDENTS_PATH)
+        .then((incidents) => ({incidents}), () => ({error: true}));
       try {
-        const responses = await Promise.all([
-          fetch(SUMMARY_PATH, requestOptions),
-          fetch(HISTORY_PATH, requestOptions),
+        const [summary, history] = await Promise.all([
+          fetchJsonWithDeadline(windowObject, SUMMARY_PATH),
+          fetchJsonWithDeadline(windowObject, HISTORY_PATH),
         ]);
-        requireCondition(responses.every((response) => response.ok));
-        const [summary, history] = await Promise.all(responses.map((response) => response.json()));
         const nowMs = Number.isFinite(windowObject.__STATUS_NOW_MS__)
           ? windowObject.__STATUS_NOW_MS__
           : Date.now();
         const model = buildViewModel(summary, history, nowMs);
         if (generation !== requestGeneration) return;
+        summaryDocument = summary;
+        if (displayedArchive && displayedArchive.generated_at !== summary.generated_at) showArchiveLoading();
         const fingerprint = fingerprintViewModel(model);
-        if (fingerprint === lastSuccessfulFingerprint) return;
-        renderStatus(document, model);
+        if (fingerprint !== lastSuccessfulFingerprint) renderStatus(document, model);
         lastSuccessfulFingerprint = fingerprint;
       } catch (_error) {
         if (generation !== requestGeneration) return;
         lastSuccessfulFingerprint = null;
         renderUnavailable(document);
-      } finally {
-        windowObject.clearTimeout(timeoutId);
+        displayedArchive = null;
+        lastArchiveFingerprint = null;
+      }
+      try {
+        const result = await archiveResult;
+        requireCondition(!result.error);
+        const {incidents} = result;
+        const nowMs = Number.isFinite(windowObject.__STATUS_NOW_MS__) ? windowObject.__STATUS_NOW_MS__ : Date.now();
+        requireCondition(summaryDocument !== null);
+        validateIncidents(incidents, summaryDocument, nowMs);
+        if (generation !== requestGeneration) return;
+        const fingerprint = JSON.stringify(incidents);
+        if (fingerprint !== lastArchiveFingerprint) renderIncidents(document, incidents);
+        lastArchiveFingerprint = fingerprint;
+        displayedArchive = incidents;
+      } catch (_error) {
+        if (generation !== requestGeneration) return;
+        lastArchiveFingerprint = null;
+        displayedArchive = null;
+        renderArchiveUnavailable(document);
       }
     }
 
@@ -549,10 +767,13 @@
     isStale,
     validateSummary,
     validateHistory,
+    validateIncidents,
     buildViewModel,
     fingerprintViewModel,
     renderStatus,
     renderUnavailable,
+    renderIncidents,
+    fetchJsonWithDeadline,
     bootstrap,
   });
 });

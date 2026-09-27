@@ -1,0 +1,35 @@
+{
+  "events": [
+    {
+      "affected_components": [
+        "watch",
+        "home",
+        "requests",
+        "audiobooks",
+        "site"
+      ],
+      "body": "Walshit services were temporarily unavailable during planned maintenance to replace the UPS battery. Maintenance is complete and services have been restored. This entry was added after the maintenance window.",
+      "id": "maint-2026-09-26-ups-battery",
+      "kind": "maintenance",
+      "resolved_at": "2026-09-26T23:25:16Z",
+      "started_at": "2026-09-26T22:40:33Z",
+      "status": "completed",
+      "title": "Planned maintenance: UPS battery replacement",
+      "updated_at": "2026-09-26T23:25:16Z",
+      "updates": [
+        {
+          "at": "2026-09-26T22:40:33Z",
+          "body": "Services were taken offline for the planned UPS battery replacement.",
+          "status": "in-progress"
+        },
+        {
+          "at": "2026-09-26T23:25:16Z",
+          "body": "The UPS battery replacement maintenance is complete. Services have been restored and recovery checks have passed.",
+          "status": "completed"
+        }
+      ]
+    }
+  ],
+  "generated_at": "2026-09-26T23:40:23Z",
+  "schema_version": "2"
+}

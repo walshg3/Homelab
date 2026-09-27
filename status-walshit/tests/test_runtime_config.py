@@ -276,6 +276,7 @@ class RuntimeConfigurationTests(unittest.TestCase):
         self.assertEqual(browser_paths, {
             "SUMMARY_PATH": "/status/v2/summary.json",
             "HISTORY_PATH": "/status/v2/history.json",
+            "INCIDENTS_PATH": "/status/v2/incidents.json",
         })
         nginx_paths = set(re.findall(
             r"(?m)^\s*location\s+=\s+(/status/v\d+/[^\s{]+\.json)\s*\{",
@@ -293,7 +294,7 @@ class RuntimeConfigurationTests(unittest.TestCase):
             f"{public_prefix}/incidents.json",
         }
         self.assertEqual(nginx_paths, expected)
-        self.assertEqual(set(browser_paths.values()), expected - {f"{public_prefix}/incidents.json"})
+        self.assertEqual(set(browser_paths.values()), expected)
 
     def test_runtime_and_documentation_never_serve_or_instruct_v1(self):
         runtime_files = (
