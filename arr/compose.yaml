@@ -40,8 +40,40 @@ services:
         - notifications
       restart: unless-stopped
 
+  unpackerr:
+    image: golift/unpackerr@sha256:057e34740d26c34d81ec8e2faf8ec11f8dbfc77489b7a42826f52b37e5ee1b6c
+    container_name: unpackerr
+    user: "${USER_ID}:${USER_ID}"
+    environment:
+      - TZ=${TZ}
+      - UN_ACTIVITY=true
+      - UN_INTERVAL=1m
+      - UN_START_DELAY=1m
+      - UN_PARALLEL=1
+      - UN_LOG_FILE=/config/unpackerr.log
+      - UN_LOG_FILE_MODE=0600
+      - UN_SONARR_0_URL=http://sonarr:8989
+      - UN_SONARR_0_API_KEY=filepath:/run/secrets/sonarr_api_key
+      - UN_SONARR_0_PATHS_0=/share/torrents
+      - UN_SONARR_0_PROTOCOLS=torrent,TorrentDownloadProtocol
+      - UN_SONARR_0_DELETE_ORIG=false
+      - UN_RADARR_0_URL=http://radarr:7878
+      - UN_RADARR_0_API_KEY=filepath:/run/secrets/radarr_api_key
+      - UN_RADARR_0_PATHS_0=/share/torrents
+      - UN_RADARR_0_PROTOCOLS=torrent,TorrentDownloadProtocol
+      - UN_RADARR_0_DELETE_ORIG=false
+    volumes:
+      - ${BASE_PATH}/unpackerr/config:/config
+      - ${BASE_PATH}/unpackerr/secrets/sonarr_api_key:/run/secrets/sonarr_api_key:ro
+      - ${BASE_PATH}/unpackerr/secrets/radarr_api_key:/run/secrets/radarr_api_key:ro
+      - storage-share:/share
+    depends_on:
+      - sonarr
+      - radarr
+    restart: unless-stopped
+
   sabnzbd:
-    image: lscr.io/linuxserver/sabnzbd:latest
+    image: lscr.io/linuxserver/sabnzbd:5.1.1-ls268@sha256:78253a5ed379d08c16deba4154a2468875aa25a729c54c59c1199f851f87c29e
     container_name: sabnzbd
     environment:
       - PUID=${USER_ID}
@@ -76,7 +108,7 @@ services:
  #Bazarr - for subtitles. Try to use SRT format if you can rather than PGS due to performance issues
   bazarr:
     container_name: bazarr
-    image: lscr.io/linuxserver/bazarr:latest
+    image: lscr.io/linuxserver/bazarr:v1.6.0-ls360@sha256:ac284d3fda9ee7da8b15197dc51f0d7a2a1da98549bee99a3d924d3e94a5e7ed
     restart: unless-stopped
     environment:
       - PUID=${USER_ID}

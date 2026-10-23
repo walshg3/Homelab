@@ -1,0 +1,430 @@
+name: dewarr
+services:
+  dewarr:
+    image: ghcr.io/logabell/dewarr@sha256:83d07954013daa1b950cfd5d0c68828cd6aaac9dd29571ab041bce492ceac132
+    user: 1000:1000
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    environment:
+      PUID: '1000'
+      PGID: '1000'
+      TZ: America/New_York
+      PUBLIC_URL: http://192.168.5.252:8085
+      DB_HOST: postgres
+      DB_NAME: dewarr
+      DB_USER: dewarr
+      DB_PASSWORD: ${DB_PASSWORD:?required}
+      BOOK_DOWNLOAD_DISPATCH_ENABLED: 'false'
+    volumes:
+    - /home/port/.local/state/hermes/dewarr/config:/config
+    - /home/port/.local/state/hermes/dewarr/data:/data
+    - media:/share:ro
+    tmpfs:
+    - /tmp:size=256m,mode=1777,nosuid,nodev
+    ports:
+    - 192.168.5.252:8085:8000
+    networks:
+    - egress
+    - database
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 256
+    restart: unless-stopped
+    stop_grace_period: 35s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    profiles:
+    - retained-pilot
+  postgres:
+    image: postgres@sha256:86c951e05bf56c93d95d397747fb8820ac76cc3bedb78f43abd83eedbe3666ae
+    read_only: true
+    cap_drop:
+    - ALL
+    cap_add:
+    - CHOWN
+    - DAC_OVERRIDE
+    - FOWNER
+    - SETUID
+    - SETGID
+    security_opt:
+    - no-new-privileges:true
+    environment:
+      POSTGRES_DB: dewarr
+      POSTGRES_USER: dewarr
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?required}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+    - postgres:/var/lib/postgresql
+    tmpfs:
+    - /tmp:size=64m,mode=1777,nosuid,nodev
+    - /var/run/postgresql:size=16m,mode=3775,uid=999,gid=999,nosuid,nodev
+    networks:
+    - database
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U dewarr -d dewarr
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 128
+    restart: unless-stopped
+    stop_grace_period: 35s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  importer:
+    image: ghcr.io/logabell/dewarr@sha256:83d07954013daa1b950cfd5d0c68828cd6aaac9dd29571ab041bce492ceac132
+    user: 1000:1000
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    environment:
+      PUID: '1000'
+      PGID: '1000'
+      TZ: America/New_York
+      PUBLIC_URL: http://192.168.5.252:8085
+      DB_HOST: postgres
+      DB_NAME: dewarr
+      DB_USER: dewarr
+      DB_PASSWORD: ${DB_PASSWORD:?required}
+      BOOK_DOWNLOAD_DISPATCH_ENABLED: 'true'
+    volumes:
+    - /home/port/.local/state/hermes/dewarr/config:/config
+    - /home/port/.local/state/hermes/dewarr/data:/data
+    - media:/share:ro
+    - managed:/managed
+    - type: volume
+      source: media
+      target: /share/torrents/dewarr
+      volume:
+        subpath: torrents/dewarr
+    tmpfs:
+    - /tmp:size=256m,mode=1777,nosuid,nodev
+    ports:
+    - 192.168.5.252:8085:8000
+    networks:
+    - egress
+    - database
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 256
+    restart: unless-stopped
+    stop_grace_period: 35s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    profiles:
+    - retained-initial-mount
+  ebooks:
+    image: ghcr.io/logabell/dewarr@sha256:83d07954013daa1b950cfd5d0c68828cd6aaac9dd29571ab041bce492ceac132
+    user: 1000:1000
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    environment:
+      PUID: '1000'
+      PGID: '1000'
+      TZ: America/New_York
+      PUBLIC_URL: http://192.168.5.252:8085
+      DB_HOST: postgres
+      DB_NAME: dewarr
+      DB_USER: dewarr
+      DB_PASSWORD: ${DB_PASSWORD:?required}
+      BOOK_DOWNLOAD_DISPATCH_ENABLED: 'true'
+    volumes:
+    - /home/port/.local/state/hermes/dewarr/config:/config
+    - /home/port/.local/state/hermes/dewarr/data:/data
+    - media:/share:ro
+    - type: volume
+      source: media
+      target: /share/torrents/dewarr
+      volume:
+        subpath: torrents/dewarr
+    - type: volume
+      source: managed
+      target: /managed
+      volume:
+        subpath: media/dewarr
+    tmpfs:
+    - /tmp:size=256m,mode=1777,nosuid,nodev
+    ports:
+    - 192.168.5.252:8085:8000
+    networks:
+    - egress
+    - database
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 256
+    restart: unless-stopped
+    stop_grace_period: 35s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    profiles:
+    - retained-stock-ebooks
+  app:
+    image: dewarr-smb:0bbf21d84b1b
+    user: 1000:1000
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    environment:
+      PUID: '1000'
+      PGID: '1000'
+      TZ: America/New_York
+      PUBLIC_URL: http://192.168.5.252:8085
+      DB_HOST: postgres
+      DB_NAME: dewarr
+      DB_USER: dewarr
+      DB_PASSWORD: ${DB_PASSWORD:?required}
+      BOOK_DOWNLOAD_DISPATCH_ENABLED: 'true'
+    volumes:
+    - /home/port/.local/state/hermes/dewarr/config:/config
+    - /home/port/.local/state/hermes/dewarr/data:/data
+    - media:/share:ro
+    - type: volume
+      source: media
+      target: /share/torrents/dewarr
+      volume:
+        subpath: torrents/dewarr
+    - type: volume
+      source: managed
+      target: /managed
+      volume:
+        subpath: media/dewarr
+    tmpfs:
+    - /tmp:size=256m,mode=1777,nosuid,nodev
+    ports:
+    - 192.168.5.252:8085:8000
+    networks:
+    - egress
+    - database
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 256
+    restart: unless-stopped
+    stop_grace_period: 35s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    pull_policy: never
+    profiles:
+    - retained-smb
+  app-sab5:
+    image: dewarr-local:c2e799ad6e62
+    user: 1000:1000
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    environment:
+      PUID: '1000'
+      PGID: '1000'
+      TZ: America/New_York
+      PUBLIC_URL: http://192.168.5.252:8085
+      DB_HOST: postgres
+      DB_NAME: dewarr
+      DB_USER: dewarr
+      DB_PASSWORD: ${DB_PASSWORD:?required}
+      BOOK_DOWNLOAD_DISPATCH_ENABLED: 'true'
+    volumes:
+    - /home/port/.local/state/hermes/dewarr/config:/config
+    - /home/port/.local/state/hermes/dewarr/data:/data
+    - media:/share:ro
+    - type: volume
+      source: media
+      target: /share/torrents/dewarr
+      volume:
+        subpath: torrents/dewarr
+    - type: volume
+      source: managed
+      target: /managed
+      volume:
+        subpath: media/dewarr
+    tmpfs:
+    - /tmp:size=256m,mode=1777,nosuid,nodev
+    ports:
+    - 192.168.5.252:8085:8000
+    networks:
+    - egress
+    - database
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 256
+    restart: unless-stopped
+    stop_grace_period: 35s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    pull_policy: never
+    profiles:
+    - retained-sab5
+  app-release:
+    image: ghcr.io/logabell/dewarr:v0.3.1@sha256:b157dd4a6aaf826f0073fb6a7893818ab72c16a36b80f632329e069aeccaa459
+    user: 1000:1000
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    environment:
+      PUID: '1000'
+      PGID: '1000'
+      TZ: America/New_York
+      PUBLIC_URL: http://192.168.5.252:8085
+      DB_HOST: postgres
+      DB_NAME: dewarr
+      DB_USER: dewarr
+      DB_PASSWORD: ${DB_PASSWORD:?required}
+      BOOK_DOWNLOAD_DISPATCH_ENABLED: 'true'
+    volumes:
+    - /home/port/.local/state/hermes/dewarr/config:/config
+    - /home/port/.local/state/hermes/dewarr/data:/data
+    - media:/share:ro
+    - type: volume
+      source: media
+      target: /share/torrents/dewarr
+      volume:
+        subpath: torrents/dewarr
+    - type: volume
+      source: managed
+      target: /managed
+      volume:
+        subpath: media/dewarr
+    tmpfs:
+    - /tmp:size=256m,mode=1777,nosuid,nodev
+    ports:
+    - 192.168.5.252:8085:8000
+    networks:
+    - egress
+    - database
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 256
+    restart: unless-stopped
+    stop_grace_period: 35s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    pull_policy: never
+    container_name: dewarr-app-release-1
+    profiles:
+    - retained-v031
+  app-v034:
+    image: ghcr.io/logabell/dewarr:v0.3.4@sha256:5c913081a91ff3d96c05303b56c8d8261a9c143207505bb3657542ec7b29bc8a
+    user: 1000:1000
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    environment:
+      PUID: '1000'
+      PGID: '1000'
+      TZ: America/New_York
+      PUBLIC_URL: http://192.168.5.252:8085
+      DB_HOST: postgres
+      DB_NAME: dewarr
+      DB_USER: dewarr
+      DB_PASSWORD: ${DB_PASSWORD:?required}
+      BOOK_DOWNLOAD_DISPATCH_ENABLED: 'true'
+    volumes:
+    - /home/port/.local/state/hermes/dewarr/config:/config
+    - /home/port/.local/state/hermes/dewarr/data:/data
+    - media:/share:ro
+    - type: volume
+      source: media
+      target: /share/torrents/dewarr
+      volume:
+        subpath: torrents/dewarr
+    - type: volume
+      source: managed
+      target: /managed
+      volume:
+        subpath: media/dewarr
+    tmpfs:
+    - /tmp:size=256m,mode=1777,nosuid,nodev
+    ports:
+    - 192.168.5.252:8085:8000
+    networks:
+    - egress
+    - database
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 256
+    restart: unless-stopped
+    stop_grace_period: 35s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    pull_policy: never
+    container_name: dewarr-app-v034-1
+networks:
+  egress:
+    ipam:
+      config:
+      - subnet: 10.255.250.96/28
+  database:
+    internal: true
+    ipam:
+      config:
+      - subnet: 10.255.250.112/28
+volumes:
+  postgres: {}
+  media:
+    external: true
+    name: audiobookshelf_storage-share
+  managed:
+    external: true
+    name: dewarr_managed_media
