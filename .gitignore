@@ -88,3 +88,19 @@ walshit-landing/hugo/cache/
 walshit-landing/hugo/.cache/
 **/__pycache__/
 **/*.py[cod]
+
+# Canonical Dewarr app was launched from this retained filename. Track the
+# exact active definition, not the older experimental candidates beside it.
+!/dewarr/compose.v034-candidate.yaml
+
+# Read-only repository hygiene regression tests.
+!/tests/test_repository_hygiene.py
+
+# Generated originals are runtime assets, not reusable overlay templates.
+/kometa/config/overlays/* Original Posters/
+
+# Retained immutable site releases/previews are not authoring source.
+# Keep these trees opaque even when they contain compose.yaml or README.md.
+/walshit-landing-hugo/
+/walshit-landing-hugo-*/
+/walshit-landing-live-*/
