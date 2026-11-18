@@ -1,0 +1,57 @@
+{
+  "schema_version": "2",
+  "generated_at": "2026-07-19T14:42:00Z",
+  "overall": {
+    "state": "operational",
+    "headline": "Everything is on schedule.",
+    "body": "All five public doors are available. No active incidents or planned work."
+  },
+  "components": [
+    {
+      "id": "watch",
+      "name": "Watch",
+      "description": "Plex playback and sign-in",
+      "state": "operational",
+      "availability_90d_pct": 100,
+      "availability_seconds_measured": 259200,
+      "history_days_available": 3
+    },
+    {
+      "id": "home",
+      "name": "Home base",
+      "description": "Dashboard and links",
+      "state": "operational",
+      "availability_90d_pct": 100,
+      "availability_seconds_measured": 259200,
+      "history_days_available": 3
+    },
+    {
+      "id": "requests",
+      "name": "Requests",
+      "description": "Film and series requests",
+      "state": "operational",
+      "availability_90d_pct": 100,
+      "availability_seconds_measured": 259200,
+      "history_days_available": 3
+    },
+    {
+      "id": "audiobooks",
+      "name": "Audiobooks",
+      "description": "Listening and library access",
+      "state": "operational",
+      "availability_90d_pct": 100,
+      "availability_seconds_measured": 259200,
+      "history_days_available": 3
+    },
+    {
+      "id": "site",
+      "name": "Walshit.com",
+      "description": "Updates and guides",
+      "state": "operational",
+      "availability_90d_pct": 100,
+      "availability_seconds_measured": 259200,
+      "history_days_available": 3
+    }
+  ],
+  "active_events": []
+}

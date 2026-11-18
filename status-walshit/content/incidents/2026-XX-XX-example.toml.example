@@ -1,0 +1,33 @@
+# Example only — fictional Incident template; replace every placeholder after copying.
+# Valid component vocabulary: "watch", "home", "requests", "audiobooks", "site".
+# Opening edit: keep the investigating update, set its time, and omit resolved_at.
+# Update edit: append identified or monitoring entries in UTC chronological order.
+# Closure edit: append resolved and set resolved_at equal to the final update time.
+id = "inc-2026-01-01-public-example"
+kind = "incident"
+title = "Public service interruption"
+body = "Some visitors may be unable to use this public component."
+severity = "medium"
+started_at = 2026-01-01T12:00:00Z
+affected_components = ["watch"]
+resolved_at = 2026-01-01T12:30:00Z
+
+[[updates]]
+at = 2026-01-01T12:00:00Z
+phase = "investigating"
+body = "Public checks indicate an interruption and review is underway."
+
+[[updates]]
+at = 2026-01-01T12:10:00Z
+phase = "identified"
+body = "The affected public function has been identified."
+
+[[updates]]
+at = 2026-01-01T12:20:00Z
+phase = "monitoring"
+body = "Public checks are improving and continued observation is underway."
+
+[[updates]]
+at = 2026-01-01T12:30:00Z
+phase = "resolved"
+body = "Public checks are consistently completing again."

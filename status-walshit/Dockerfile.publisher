@@ -1,0 +1,12 @@
+FROM python:3.12.11-alpine3.22@sha256:efcdfa6a6b2fd2afb9c7dfa9a5b288a6f68338b5cfdebe6b637d986067d85757
+
+RUN addgroup -S -g 1000 status \
+    && adduser -S -D -H -u 1000 -G status status \
+    && mkdir -p /app/config /app/content /var/lib/status/public /var/lib/status/state \
+    && chown -R 1000:1000 /var/lib/status/public /var/lib/status/state /app
+WORKDIR /app
+COPY --chown=1000:1000 publisher/ /app/publisher/
+COPY --chown=1000:1000 config/checks.toml /app/config/checks.toml
+
+USER 1000:1000
+CMD ["python3", "-u", "-m", "publisher.runner", "serve", "--config", "/app/config/checks.toml", "--content-root", "/app/content", "--output-dir", "/var/lib/status/public", "--state-file", "/var/lib/status/state/publisher-state.json", "--secret-file", "/run/secrets/plex-probe.env", "--interval-seconds", "60"]

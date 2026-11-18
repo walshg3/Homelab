@@ -1,0 +1,7 @@
+{
+  "name": "Independent status soak watchdog",
+  "schedule": "every 5m",
+  "script": "run_status_soak_watchdog.py",
+  "no_agent": true,
+  "deliver": "local"
+}
