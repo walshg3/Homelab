@@ -364,6 +364,20 @@ human decision about whether public narration is warranted. It must never
 create or edit public content automatically, and automatic component state
 remains separate from manual narration.
 
+### Uptime-impacting changes need a public event
+
+Any change expected to make a public component unavailable or degraded needs a
+public event. Examples: host reboots or moves, VM/Docker updates that restart
+services, stack recreates and network or tunnel changes.
+
+- Planned work: file a Maintenance record before starting. Mark it
+  `in-progress` when work begins and `completed` once public checks pass. A
+  Walshit Updates announcement or commit may accompany it, but it does not
+  replace the status record.
+- Unplanned outages of ten minutes or more: file a retrospective Incident after
+  recovery, even if nobody noticed at the time.
+- Brief blips that the anti-flap thresholds absorb don't need a record.
+
 For an Incident, make a local copy with a lowercase validator-accepted
 `*.toml` filename, edit every fictional field, and retain only the lifecycle
 updates that have actually happened:
@@ -600,3 +614,18 @@ retain the copied source, schema package, wrappers, manifests, state, and secret
 for diagnosis; and use a reviewed source revert only if the watchdog source
 must be rolled back. Do not delete or reset state, rotate or delete the webhook,
 remove runtime files, or change the publisher as part of routine rollback.
+
+## Offline edge fallback
+
+`edge/fallback-worker.mjs` is a Cloudflare Worker on the route
+`status.walshit.com/*` in fail-open mode. It passes every request through to
+the origin unchanged. Only for `GET`/`HEAD` of `/` or `/index.html`, when the
+origin is unreachable (fetch error or 502–504, 520–527, 530), does it serve a
+static, uncached 503 notice saying the house is offline. Every other path keeps
+the origin's failure response, so the public watchdog and browsers still see
+the real outage. The Worker holds no secrets, makes one subrequest and loads no
+external resources.
+
+Test locally with `node --test edge/fallback-worker.test.mjs`. Deploying the
+script or route is a Cloudflare account mutation and requires the per-change
+token approval with a captured rollback (delete the route, then the script).
