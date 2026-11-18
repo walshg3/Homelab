@@ -5,6 +5,7 @@
   <title>{{ if .IsHome }}Walshit — Movies, shows, and audiobooks, privately{{ else }}{{ .Title }} — Walshit{{ end }}</title>
   <meta name="description" content="{{ if .IsHome }}Walshit is a small private media library shared with friends and family. Watch on Plex, use Framerr as your home base, request through Seerr, and listen on Audiobookshelf.{{ else }}{{ .Params.summary }}{{ end }}">
   <link rel="icon" type="image/png" href="{{ "walsh-ticket-crest.png" | relURL }}?v={{ .Site.Params.assetVersion }}">
+  <link rel="preload" href="{{ "fonts/libre-baskerville-variable.woff2" | relURL }}" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="{{ "styles.css" | relURL }}?v={{ .Site.Params.assetVersion }}">
   {{ with .OutputFormats.Get "rss" -}}
   <link rel="alternate" type="application/rss+xml" title="{{ $.Site.Title }} — {{ $.Title }}" href="{{ .Permalink }}">

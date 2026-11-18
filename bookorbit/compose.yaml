@@ -1,0 +1,472 @@
+name: bookorbit
+services:
+  app:
+    image: ghcr.io/bookorbit/bookorbit:3.0.0@sha256:571ea47b036a8b371db9c54d54a3cea0fb96245f66c09584efac799afd339716
+    user: 1000:1000
+    restart: 'no'
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 256
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    tmpfs:
+    - /tmp:size=268435456,mode=1777
+    ports:
+    - 192.168.5.252:8086:3000
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      HOST: 0.0.0.0
+      HOME: /tmp
+      APP_URL: http://192.168.5.252:8086
+      CLIENT_URL: http://192.168.5.252:8086
+      TZ: America/New_York
+      PUID: '1000'
+      PGID: '1000'
+      BOOKORBIT_FIX_PERMISSIONS: 'false'
+      NODE_MAX_OLD_SPACE_SIZE: '1280'
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: '5432'
+      POSTGRES_USER: bookorbit
+      POSTGRES_DB: bookorbit
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      SETUP_BOOTSTRAP_TOKEN_FILE: /run/secrets/setup_token
+      EMAIL_ENCRYPTION_KEY_FILE: /run/secrets/email_key
+      MIGRATION_ENCRYPTION_KEY_FILE: /run/secrets/migration_key
+      BOOK_REQUEST_ENCRYPTION_KEY_FILE: /run/secrets/request_key
+      LIBRARY_BROWSE_ROOT: /books
+      BOOK_DOCK_PATH: /data/book-dock
+      LOG_LEVEL: info
+    volumes:
+    - /home/port/.local/state/hermes/bookorbit/data:/data
+    - /home/port/.local/state/hermes/bookorbit/secrets:/run/secrets:ro
+    - type: volume
+      source: existing_media
+      target: /books/audiobooks
+      read_only: true
+      volume:
+        nocopy: true
+        subpath: media/audiobooks
+    - type: volume
+      source: existing_media
+      target: /books/shelfmark
+      read_only: true
+      volume:
+        nocopy: true
+        subpath: media/shelfmark
+    networks:
+    - egress
+    - database
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - -q
+      - -T
+      - '4'
+      - -O
+      - /dev/null
+      - http://127.0.0.1:3000/api/v1/health
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    profiles:
+    - retained-reader-only
+  postgres:
+    image: pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+    user: 1000:1000
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    cpus: 1.0
+    mem_limit: 768m
+    pids_limit: 128
+    shm_size: 128m
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    tmpfs:
+    - /tmp:size=67108864,mode=1777
+    - /var/run/postgresql:size=16777216,uid=1000,gid=1000,mode=0700
+    environment:
+      POSTGRES_USER: bookorbit
+      POSTGRES_DB: bookorbit
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: America/New_York
+    volumes:
+    - /home/port/.local/state/hermes/bookorbit/postgres:/var/lib/postgresql/data
+    - /home/port/.local/state/hermes/bookorbit/secrets/postgres_password:/run/secrets/postgres_password:ro
+    networks:
+    - database
+    healthcheck:
+      test:
+      - CMD
+      - pg_isready
+      - -U
+      - bookorbit
+      - -d
+      - bookorbit
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+  app-requests:
+    image: ghcr.io/bookorbit/bookorbit:latest
+    user: 1000:1000
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 256
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    tmpfs:
+    - /tmp:size=268435456,mode=1777
+    ports:
+    - 192.168.5.252:8086:3000
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      HOST: 0.0.0.0
+      HOME: /tmp
+      APP_URL: http://192.168.5.252:8086
+      CLIENT_URL: http://192.168.5.252:8086
+      TZ: America/New_York
+      PUID: '1000'
+      PGID: '1000'
+      BOOKORBIT_FIX_PERMISSIONS: 'false'
+      NODE_MAX_OLD_SPACE_SIZE: '1280'
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: '5432'
+      POSTGRES_USER: bookorbit
+      POSTGRES_DB: bookorbit
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      SETUP_BOOTSTRAP_TOKEN_FILE: /run/secrets/setup_token
+      EMAIL_ENCRYPTION_KEY_FILE: /run/secrets/email_key
+      MIGRATION_ENCRYPTION_KEY_FILE: /run/secrets/migration_key
+      BOOK_REQUEST_ENCRYPTION_KEY_FILE: /run/secrets/request_key
+      LIBRARY_BROWSE_ROOT: /books
+      BOOK_DOCK_PATH: /data/book-dock
+      LOG_LEVEL: info
+    volumes:
+    - /home/port/.local/state/hermes/bookorbit/data:/data
+    - /home/port/.local/state/hermes/bookorbit/secrets:/run/secrets:ro
+    - type: volume
+      source: existing_media
+      target: /books/audiobooks
+      read_only: true
+      volume:
+        nocopy: true
+        subpath: media/audiobooks
+    - type: volume
+      source: existing_media
+      target: /books/shelfmark
+      read_only: true
+      volume:
+        nocopy: true
+        subpath: media/shelfmark
+    - type: volume
+      source: existing_media
+      target: /books/requests
+      read_only: false
+      volume:
+        nocopy: true
+        subpath: media/bookorbit
+    - type: volume
+      source: existing_media
+      target: /downloads/usenet
+      read_only: true
+      volume:
+        nocopy: true
+        subpath: usenet/bookorbit
+    - type: volume
+      source: existing_media
+      target: /downloads/torrents
+      read_only: true
+      volume:
+        nocopy: true
+        subpath: torrents/bookorbit
+    networks:
+    - egress
+    - database
+    - tts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - -q
+      - -T
+      - '4'
+      - -O
+      - /dev/null
+      - http://127.0.0.1:3000/api/v1/health
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0@sha256:ee3111d6a2c903ed62f3b4fa19543c6901205ed39fce3c177e895b34a8386b9c
+    user: 1000:1000
+    restart: 'no'
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 128
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+    tmpfs:
+    - /tmp:size=268435456,mode=1777
+    command:
+    - python
+    - -m
+    - uvicorn
+    - api.src.main:app
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8880'
+    - --log-level
+    - warning
+    - --no-access-log
+    environment:
+      USE_GPU: 'false'
+      DEVICE_TYPE: cpu
+      DOWNLOAD_MODEL: 'false'
+      DEFAULT_VOICE: af_heart
+      API_LOG_LEVEL: WARNING
+      ENABLE_WEB_PLAYER: 'false'
+      ENABLE_DEBUG_ENDPOINTS: 'false'
+      ALLOW_DEV_UNLOAD: 'false'
+      ALLOW_LOCAL_VOICE_SAVING: 'false'
+      ENABLE_INNO_TUNER: 'false'
+      CORS_ENABLED: 'false'
+      MAX_INPUT_LENGTH: '5000'
+      TEMP_FILE_DIR: /tmp/kokoro-audio
+      HOME: /tmp
+      HF_HOME: /tmp/huggingface
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '1'
+      TOKENIZERS_PARALLELISM: 'false'
+    networks:
+    - tts
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8880/health',
+        timeout=4)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    profiles:
+    - retained-tts-preflight
+  kokoro-runtime:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0@sha256:ee3111d6a2c903ed62f3b4fa19543c6901205ed39fce3c177e895b34a8386b9c
+    user: 1000:1000
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    cpus: 2.0
+    mem_limit: 3g
+    pids_limit: 128
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+    tmpfs:
+    - /tmp:exec,size=268435456,mode=1777
+    command:
+    - python
+    - -m
+    - uvicorn
+    - api.src.main:app
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8880'
+    - --log-level
+    - warning
+    - --no-access-log
+    environment:
+      USE_GPU: 'false'
+      DEVICE_TYPE: cpu
+      DOWNLOAD_MODEL: 'false'
+      DEFAULT_VOICE: af_heart
+      API_LOG_LEVEL: WARNING
+      ENABLE_WEB_PLAYER: 'false'
+      ENABLE_DEBUG_ENDPOINTS: 'false'
+      ALLOW_DEV_UNLOAD: 'false'
+      ALLOW_LOCAL_VOICE_SAVING: 'false'
+      ENABLE_INNO_TUNER: 'false'
+      CORS_ENABLED: 'false'
+      MAX_INPUT_LENGTH: '5000'
+      TEMP_FILE_DIR: /tmp/kokoro-audio
+      HOME: /tmp
+      HF_HOME: /tmp/huggingface
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '1'
+      TOKENIZERS_PARALLELISM: 'false'
+    networks:
+      tts:
+        aliases:
+        - kokoro
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8880/health',
+        timeout=4)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    memswap_limit: 5g
+  kokoro-cpu-tuned:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0@sha256:ee3111d6a2c903ed62f3b4fa19543c6901205ed39fce3c177e895b34a8386b9c
+    user: 1000:1000
+    restart: 'no'
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    cpus: 2.0
+    mem_limit: 3g
+    pids_limit: 128
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+    tmpfs:
+    - /tmp:exec,size=268435456,mode=1777
+    command:
+    - python
+    - -m
+    - uvicorn
+    - api.src.main:app
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8880'
+    - --log-level
+    - warning
+    - --no-access-log
+    environment:
+      USE_GPU: 'false'
+      DEVICE_TYPE: cpu
+      DOWNLOAD_MODEL: 'false'
+      DEFAULT_VOICE: af_heart
+      API_LOG_LEVEL: WARNING
+      ENABLE_WEB_PLAYER: 'false'
+      ENABLE_DEBUG_ENDPOINTS: 'false'
+      ALLOW_DEV_UNLOAD: 'false'
+      ALLOW_LOCAL_VOICE_SAVING: 'false'
+      ENABLE_INNO_TUNER: 'false'
+      CORS_ENABLED: 'false'
+      MAX_INPUT_LENGTH: '5000'
+      TEMP_FILE_DIR: /tmp/kokoro-audio
+      HOME: /tmp
+      HF_HOME: /tmp/huggingface
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_WAIT_POLICY: PASSIVE
+      KMP_BLOCKTIME: '0'
+    networks:
+    - tts
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8880/health',
+        timeout=4)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    memswap_limit: 5g
+    profiles:
+    - retained-cpu-tuning
+networks:
+  egress:
+    ipam:
+      config:
+      - subnet: 10.255.250.128/28
+  database:
+    internal: true
+    ipam:
+      config:
+      - subnet: 10.255.250.144/28
+  tts:
+    internal: true
+    ipam:
+      config:
+      - subnet: 10.255.250.160/28
+volumes:
+  existing_media:
+    external: true
+    name: audiobookshelf_storage-share

@@ -1,0 +1,17 @@
+[Unit]
+Description=GitHub Actions Runner one-job window (walshit-production-containers)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=walshit-deploy
+WorkingDirectory=/home/walshit-deploy/actions-runner
+ExecStart=/home/walshit-deploy/actions-runner/run.sh --once
+Restart=no
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=5min
+
+[Install]
+WantedBy=multi-user.target

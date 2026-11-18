@@ -26,7 +26,8 @@
 
 services:
   tracearr:
-    image: ghcr.io/connorgallopo/tracearr:latest
+    # Temporary: Maintainerr 3.22.1 requires Tracearr public API v2; return to stable after the fix reaches a main release.
+    image: ghcr.io/connorgallopo/tracearr:2.1.0-beta.7@sha256:135fd9f724350c1061370af6213d5cda56e01cfbaebf92f9eb6502219fcca9cd
     container_name: tracearr
     ports:
       - "3001:3001"

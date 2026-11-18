@@ -62,9 +62,9 @@ Rollback does not require deleting volumes, pruning images, or removing unrelate
 
 ---
 
-## Hugo content prototype (Updates / Guides)
+## Hugo site (Updates / Guides)
 
-An isolated Hugo MVP prototype lives alongside the legacy static page above,
+The production Hugo site lives alongside the legacy static page above,
 under `hugo/`, `tests/`, `Dockerfile.hugo`, `nginx.hugo.conf`, and
 `compose.hugo.yaml`. It does not replace or modify the legacy `site/`,
 `Dockerfile`, `nginx.conf`, or `compose.yaml` files, which remain the
@@ -165,7 +165,7 @@ docker compose -f compose.hugo.yaml down
 
 **Not run here:** requires a Docker daemon, unavailable in this sandbox.
 
-### Release
+### Local release preview
 
 Build and tag the image, then bring the prototype service up in its declared
 `walshit-landing-hugo` Compose project, independent of the legacy `landing`
@@ -189,5 +189,162 @@ docker compose -f compose.hugo.yaml down
 ```
 
 The legacy stack (`compose.yaml`, `Dockerfile`, `nginx.conf`, `site/`)
-is untouched by this prototype and remains the immediate rollback path
-if the Hugo prototype is ever promoted and needs to be reverted.
+is untouched by the Hugo site and remains a separately retained rollback input.
+
+## GitHub Actions deployment
+
+`.github/workflows/walshit.yml` runs for every pull request and push to `main`
+so its required check cannot be skipped by path filtering. It installs checksum-verified Hugo
+v0.164.0, runs all source/generated/CI contract tests, renders both Compose
+models, and performs a real hardened-container smoke test. After publication,
+the publish job pulls and smoke-tests the exact pushed digest before deployment
+can begin. A successful
+`main` push publishes both
+`ghcr.io/walshg3/walshit-landing:<full-commit-sha>` and the convenience
+`main` tag. Production always deploys the full commit-SHA tag; it never uses
+`main` as a deployment identity. The publish job also returns the immutable
+manifest digest, and the production Compose model runs the `image@sha256`
+reference after proving the commit tag resolves to that exact digest.
+
+Repository-side workflow syntax can be checked with
+`actionlint -config-file actionlint.yaml .github/workflows/walshit.yml` from
+the repository root. The explicit config path registers the private
+`walshit-production` runner label.
+
+The publish job uses only the workflow-scoped `GITHUB_TOKEN`. No repository or environment secrets are required. Set the GHCR package to public so the
+deployment wrapper can pull it anonymously; if the package must remain
+private, provision a host-local read-only package credential outside GitHub
+Actions and outside this repository.
+
+### Required GitHub setup
+
+1. Create a protected production Environment named `production`, restricted to `main`; add a
+   required reviewer when the repository plan supports it.
+2. Protect `main`: require pull requests and the `Test and container smoke
+   test` check, require current branches, and block force pushes/deletion.
+3. Because this repository is public, first choose **Require approval for all outside collaborators** under **Settings > Actions > General > Fork pull request workflows from outside collaborators**. Never approve untrusted workflow
+   changes while production runner capacity is online. Only then register a
+   repository-scoped self-hosted runner on the containers VM with labels
+   `self-hosted`, `linux`, `x64`, and `walshit-production`. Run it as a dedicated
+   unprivileged `walshit-deploy` account named `walshit-production-containers`.
+   This operating procedure uses a persistent registration plus a separate
+   native-`--once` unit; do not configure this runner as ephemeral/JIT. Keep the
+   generated service disabled and offline except for migration or recovery.
+   Install `git` for the freshness check. Do not add that account to the Docker
+   or sudo groups. Install the generated unit, then immediately stop and disable
+   it before allowing any matching workflow to queue:
+
+   ```sh
+   sudo bash -c \
+     'cd /home/walshit-deploy/actions-runner && ./svc.sh install walshit-deploy'
+   sudo systemctl disable --now \
+     actions.runner.walshg3-Homelab.walshit-production-containers.service
+   ```
+4. Install `compose.production.yaml` as root-owned mode `0644` at
+   `/etc/walshit/compose.production.yaml` and install
+   `scripts/deploy-production.sh` as root-owned mode `0755` at
+   `/usr/local/sbin/deploy-walshit`.
+5. Add one exact sudoers rule allowing only the `walshit-deploy` account to
+   execute `/usr/local/sbin/deploy-walshit` as root. Do not grant arbitrary
+   Docker, shell, file-copy, or environment-preservation privileges.
+6. Confirm the retained external network
+   `walshit-landing-hugo-prod-9238dbfa_default` exists and still has the
+   reviewed subnet before enabling the Environment.
+
+### Offline runner operating window
+
+Install the native one-job unit and bounded supervisor from a reviewed checkout.
+Both are root-owned. The helper is for an operator with sudo access; do not add
+it to the `walshit-deploy` sudoers rule.
+
+```sh
+sudo install --owner=root --group=root --mode=0644 \
+  systemd/walshit-production-runner-once.service \
+  /etc/systemd/system/walshit-production-runner-once.service
+sudo install --owner=root --group=root --mode=0755 \
+  scripts/run-production-runner-once.sh \
+  /usr/local/sbin/run-walshit-production-job-once
+sudo systemctl daemon-reload
+sudo systemctl disable walshit-production-runner-once.service
+```
+
+Before installation, confirm the generated runner service is already inactive;
+do not use `disable --now` as a shortcut while any worker might be running. The
+reviewed one-job unit invokes
+`/home/walshit-deploy/actions-runner/run.sh --once`, uses
+`KillMode=control-group`, has no restart policy, and remains disabled between
+operator windows. Upstream still supports `--once` for existing users but marks
+it for future deprecation; verify the installed runner version before initial
+installation and migrate this procedure to per-run JIT configuration before
+upstream removes the flag.
+
+Use this sequence for each production deployment:
+
+1. Confirm the only queued matching job is the reviewed Walshit production
+   deployment and that `walshit-production-containers` is offline and idle.
+2. Let hosted tests and immutable image publication finish successfully.
+3. Approve the protected `production` Environment for that exact workflow run.
+4. Open one bounded runner window:
+
+   ```sh
+   sudo /usr/local/sbin/run-walshit-production-job-once
+   ```
+
+5. Confirm the workflow and GitHub deployment status succeeded, production is
+   healthy on port 3003, the predecessor is stopped and retained, and the
+   runner service is disabled and inactive again.
+
+The helper serializes operators with a root-only lock and refuses to run unless
+both runner units are disabled/inactive with no runner process. It validates
+the one-job unit's user, native `--once` command, kill mode, SIGTERM stop
+signal, five-minute rollback timeout, and restart policy. It uses trusted
+absolute command paths and bounds every systemd call. It waits up to 10 minutes
+for one `Runner.Worker` and allows that job up to 45 minutes,
+five minutes longer than the workflow's own timeout. Native `--once` prevents
+listener from accepting a second job. `KillMode=control-group` and a bounded
+five-minute systemd stop let catchable deployment termination reach the
+rollback wrapper before systemd escalates.
+
+This mechanism does **not** atomically bind the runner to a GitHub run or job
+ID. The custom label and queue check remain part of the security boundary:
+restrict who can queue repository workflows, approve only the exact protected
+deployment, and do not open the runner window if any other matching job exists.
+The helper never enables services, approves environments, deploys directly, or
+removes retained containers. If no job arrives or the job fails, inspect the
+GitHub run before opening another window; do not leave the runner online while
+troubleshooting.
+
+The deploy job has a production concurrency lock and rechecks remote `main`
+immediately before invoking the wrapper, so a superseded queued run cannot
+deploy after a newer revision. The wrapper accepts exactly one lowercase
+40-character commit SHA plus its `sha256` digest, verifies its own and the
+trusted Compose file's root ownership/modes, takes a host lock, pulls the
+exact commit tag, and proves by immutable Docker image-ID equality that the tag
+resolves to the supplied digest and revision label. The host lock lives at
+`/run/walshit/production.lock` inside a root-owned mode `0700` directory. It
+first creates only `landing-hugo` as a loopback candidate on the
+retained external bridge. After candidate acceptance and a second remote-main
+check, it stops but retains the current production container and starts a
+SHA-named live project on the fixed origin. Each Compose start uses
+`--no-deps --no-build --pull never`; it never runs Compose `down`, removes
+volumes/networks/containers, or prunes resources.
+
+Both candidate and live acceptance wait for Docker health and the exact
+`walshit-landing-hugo-ok` body. A failed candidate is stopped and retained
+without touching production. A failed live cutover stops and retains the
+rejected container, restarts the retained predecessor, waits for predecessor
+health, and exits nonzero with a clear rollback result. Successful releases
+also leave the predecessor stopped and retained. Cleanup remains a separate,
+explicitly approved operation. A failed candidate or repeated revision is
+retained for diagnosis; a same-SHA retry requires operator review and removal
+of only that SHA-named retained project. If no container owns production port
+3003, restore the retained predecessor before retrying rather than bypassing
+the fail-closed listener check. Exit and signal traps attempt the same rollback
+when a catchable termination signal reaches the wrapper after cutover begins;
+the deploy job allows 40 minutes for pull, acceptance, and rollback. A failed
+emergency rollback prints an immediate operator-recovery warning.
+
+The production Compose model declares no persistent volume. Its retained
+external network, fixed origin binding, read-only root, non-root identity,
+capability drop, resource limits, tmpfs, health check, and bounded logs are
+all explicit. Cloudflare/DNS are outside this pipeline and are not mutated.

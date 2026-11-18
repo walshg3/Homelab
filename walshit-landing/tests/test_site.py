@@ -99,7 +99,7 @@ class FundingIntegrationTest(unittest.TestCase):
 
     def test_header_support_css_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260719-3"', config)
+        self.assertIn('assetVersion = "20260804-1"', config)
 
     def test_header_support_label_preserves_requested_case(self):
         css = (HUGO / "static" / "styles.css").read_text()
@@ -146,7 +146,7 @@ class FundingIntegrationTest(unittest.TestCase):
 
     def test_mobile_hamburger_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260719-3"', config)
+        self.assertIn('assetVersion = "20260804-1"', config)
 
     def test_header_support_control_is_compact_and_flat(self):
         css = (HUGO / "static" / "styles.css").read_text()
@@ -159,6 +159,50 @@ class FundingIntegrationTest(unittest.TestCase):
         self.assertNotRegex(rule, r"(?:^|;)\s*border:")
         self.assertIn("padding-inline: .6rem", rule)
         self.assertNotRegex(css, r"nav a\.coffee-nav:hover\s*\{[^}]*(?:transform|box-shadow)")
+
+
+class PlexStreamingDeviceGuideTest(unittest.TestCase):
+    """The buyer's guide serves remote library members and favors Infuse on Apple TV."""
+
+    def test_guide_is_written_for_remote_library_members(self):
+        guide = (
+            CONTENT / "guides" / "best-streaming-devices-for-plex.md"
+        ).read_text()
+        self.assertIn("shared Plex library over the internet", guide)
+        self.assertIn("server's upload speed", guide)
+        self.assertIn("client home's internet connection", guide)
+        self.assertNotIn("for local Plex playback", guide)
+
+    def test_apple_tv_recommendation_leads_with_infuse(self):
+        guide = (
+            CONTENT / "guides" / "best-streaming-devices-for-plex.md"
+        ).read_text()
+        self.assertIn("If you buy an Apple TV for this library, start with Infuse Pro", guide)
+        self.assertIn("need a lower-bitrate adaptive transcode", guide)
+        self.assertIn(
+            "](/guides/infuse-vs-plex-apple-tv/)",
+            guide,
+        )
+
+
+class InfuseAppleTVGuideTest(unittest.TestCase):
+    """The Infuse guide is actionable for remote members without server access."""
+
+    def test_guide_addresses_remote_shared_library_members(self):
+        guide = (
+            CONTENT / "guides" / "infuse-vs-plex-apple-tv.md"
+        ).read_text()
+        self.assertIn("shared library over the internet", guide)
+        self.assertIn("most of this library is 4K", guide)
+        self.assertNotIn("demanding local playback", guide)
+
+    def test_recommendation_does_not_require_plex_dashboard_access(self):
+        guide = (
+            CONTENT / "guides" / "infuse-vs-plex-apple-tv.md"
+        ).read_text()
+        self.assertNotIn("dashboard", guide.lower())
+        self.assertIn("same audio and subtitle selections", guide)
+        self.assertIn("start with Infuse Pro", guide)
 
 
 class UpdatesLinkStylingTest(unittest.TestCase):
@@ -181,7 +225,7 @@ class UpdatesLinkStylingTest(unittest.TestCase):
 
     def test_updates_link_style_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260719-3"', config)
+        self.assertIn('assetVersion = "20260804-1"', config)
 
 
 class UpdatesDateSpacingTest(unittest.TestCase):
@@ -210,7 +254,7 @@ class UpdatesDateSpacingTest(unittest.TestCase):
 
     def test_update_date_spacing_uses_a_new_asset_version(self):
         config = (HUGO / "hugo.toml").read_text()
-        self.assertIn('assetVersion = "20260719-3"', config)
+        self.assertIn('assetVersion = "20260804-1"', config)
 
 
 def _all_content_files():

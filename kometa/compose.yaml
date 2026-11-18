@@ -7,7 +7,7 @@ volumes:
 services:
   #kometa - used to create collections in plex. Example: "Most Popular Movies This Week", "Best of horror", etc.
   kometa:
-    image: lscr.io/linuxserver/kometa:latest
+    image: lscr.io/linuxserver/kometa:v2.4.8-ls114@sha256:194d84e26a1d64a4dad2ec7f914daffc3ad4a3fa945445512ecd9539d9042db6
     container_name: kometa
     environment:
       - PUID=${USER_ID}
