@@ -18,6 +18,8 @@ REQUIRED_FILES = {
     "app.js",
     "healthz.txt",
     "walsh-ticket-crest.png",
+    "favicon.ico",
+    "apple-touch-icon.png",
     "buy-me-a-coffee-logo.png",
     "updates/index.html",
     "updates/index.xml",

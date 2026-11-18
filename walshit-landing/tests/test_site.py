@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import re
 import sys
+import struct
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -38,6 +39,8 @@ REQUIRED_STRUCTURE_FILES = [
     "static/styles.css",
     "static/app.js",
     "static/walsh-ticket-crest.png",
+    "static/favicon.ico",
+    "static/apple-touch-icon.png",
     "static/buy-me-a-coffee-logo.png",
 ]
 
@@ -54,6 +57,34 @@ class HugoSourceStructureTest(unittest.TestCase):
     def test_required_homepage_structure_exists(self):
         missing = [f for f in REQUIRED_STRUCTURE_FILES if not (HUGO / f).is_file()]
         self.assertEqual(missing, [], f"missing required Hugo source files under {HUGO}: {missing}")
+
+
+class FaviconTest(unittest.TestCase):
+    def test_tab_favicon_is_a_small_multi_size_ico(self):
+        data = (HUGO / "static" / "favicon.ico").read_bytes()
+        self.assertLess(len(data), 32768, "tab favicon must stay small")
+        reserved, kind, count = struct.unpack("<HHH", data[:6])
+        self.assertEqual((reserved, kind), (0, 1))
+        sizes = {
+            (data[6 + 16 * i] or 256, data[7 + 16 * i] or 256) for i in range(count)
+        }
+        self.assertTrue({(16, 16), (32, 32), (48, 48)} <= sizes)
+
+    def test_apple_touch_icon_is_opaque_180_png(self):
+        data = (HUGO / "static" / "apple-touch-icon.png").read_bytes()
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(struct.unpack(">II", data[16:24]), (180, 180))
+        self.assertEqual(data[25], 2, "apple-touch-icon must be opaque RGB")
+        self.assertLess(len(data), 65536)
+
+    def test_head_links_small_icons_instead_of_the_large_crest(self):
+        head = (HUGO / "layouts" / "partials" / "head.html").read_text()
+        self.assertIn('<link rel="icon" href="{{ "favicon.ico" | relURL }}?v={{ .Site.Params.assetVersion }}" sizes="16x16 32x32 48x48">', head)
+        self.assertIn('<link rel="apple-touch-icon" href="{{ "apple-touch-icon.png" | relURL }}?v={{ .Site.Params.assetVersion }}">', head)
+        self.assertNotIn("walsh-ticket-crest.png", head)
+
+    def test_nginx_caches_icons_like_images(self):
+        self.assertIn("location ~* \\.(png|ico)$ {", (ROOT / "nginx.hugo.conf").read_text())
 
 
 class FundingIntegrationTest(unittest.TestCase):
