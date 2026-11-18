@@ -323,6 +323,7 @@ class RuntimeConfigurationTests(unittest.TestCase):
         for token in ("listen 8080", "pid /tmp/nginx.pid", "server_tokens off",
                       "autoindex off", "location = /healthz.txt", "location = /",
                       "location = /walsh-ticket-crest.png",
+                      "location = /favicon.ico", "location = /apple-touch-icon.png",
                       "location ~ \\.html$", "location ~ \\.(?:css|js)$",
                       "location ~ ^/fonts/[a-z0-9-]+\\.woff2$",
                       "location = /status/v2/summary.json",

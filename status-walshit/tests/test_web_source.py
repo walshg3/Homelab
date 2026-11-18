@@ -109,8 +109,35 @@ class WebSourceTests(unittest.TestCase):
         )
         self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
         self.assertEqual(struct.unpack(">II", data[16:24]), (768, 768))
+        self.assertNotIn("walsh-ticket-crest.png", self.html)
+
+    def test_small_favicon_is_a_lightweight_multi_size_ico(self):
+        ico = WEB / "favicon.ico"
+        self.assertTrue(ico.is_file(), "browser-default favicon.ico must be bundled")
+        data = ico.read_bytes()
+        self.assertLess(len(data), 32768, "tab favicon must stay small")
+        reserved, kind, count = struct.unpack("<HHH", data[:6])
+        self.assertEqual((reserved, kind), (0, 1))
+        sizes = set()
+        for index in range(count):
+            width, height = struct.unpack("<BB", data[6 + 16 * index:8 + 16 * index])
+            sizes.add((width or 256, height or 256))
+        self.assertTrue({(16, 16), (32, 32), (48, 48)} <= sizes)
         self.assertIn(
-            '<link rel="icon" type="image/png" href="walsh-ticket-crest.png?v=20260801">',
+            '<link rel="icon" href="favicon.ico?v=20261118" sizes="16x16 32x32 48x48">',
+            self.html,
+        )
+
+    def test_apple_touch_icon_is_opaque_180_png(self):
+        icon = WEB / "apple-touch-icon.png"
+        self.assertTrue(icon.is_file(), "iOS home-screen icon must be bundled")
+        data = icon.read_bytes()
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(struct.unpack(">II", data[16:24]), (180, 180))
+        self.assertEqual(data[25], 2, "apple-touch-icon must be opaque RGB")
+        self.assertLess(len(data), 65536)
+        self.assertIn(
+            '<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20261118">',
             self.html,
         )
 
@@ -246,7 +273,8 @@ class WebSourceTests(unittest.TestCase):
                 "#main",
                 "#history",
                 "fonts/libre-baskerville-variable.woff2",
-                "walsh-ticket-crest.png?v=20260801",
+                "favicon.ico?v=20261118",
+                "apple-touch-icon.png?v=20261118",
                 "status.css?v=20260926-history2",
                 "navigation.js",
                 "status.js?v=20260926-history2",
@@ -261,7 +289,8 @@ class WebSourceTests(unittest.TestCase):
             runtime_assets,
             [
                 "fonts/libre-baskerville-variable.woff2",
-                "walsh-ticket-crest.png?v=20260801",
+                "favicon.ico?v=20261118",
+                "apple-touch-icon.png?v=20261118",
                 "status.css?v=20260926-history2",
                 "navigation.js",
                 "status.js?v=20260926-history2",

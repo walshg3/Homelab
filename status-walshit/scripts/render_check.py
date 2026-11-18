@@ -36,8 +36,8 @@ EXPECTED_REQUESTS = {
     "/status/v2/summary.json",
     "/status/v2/history.json",
     "/status/v2/incidents.json",
-    "/walsh-ticket-crest.png",
     "/favicon.ico",
+    "/apple-touch-icon.png",
 } | FONT_REQUESTS
 
 
@@ -127,7 +127,7 @@ def fixture_server(
                     "text/javascript",
                     injected + (WEB / "status.js").read_bytes(),
                 )
-            if path in {"/status.css", "/navigation.js", "/walsh-ticket-crest.png"} | FONT_REQUESTS:
+            if path in {"/status.css", "/navigation.js", "/favicon.ico", "/apple-touch-icon.png"} | FONT_REQUESTS:
                 return self.send_file(WEB / path.removeprefix("/"))
             self.send_bytes(404, "text/plain", b"not found")
 
