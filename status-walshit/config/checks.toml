@@ -1,0 +1,42 @@
+schema_version = "1"
+
+[[checks]]
+component_id = "watch"
+kind = "plex-composite"
+web_url = "https://app.plex.tv/desktop/"
+resources_url = "https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1&includeIPv6=1"
+slow_seconds = 3.0
+timeout_seconds = 10.0
+follow_redirects = false
+
+[[checks]]
+component_id = "home"
+kind = "json-equals"
+url = "https://home.walshit.com/api/health"
+slow_seconds = 2.0
+timeout_seconds = 10.0
+follow_redirects = false
+
+[[checks]]
+component_id = "requests"
+kind = "json-requires-string"
+url = "https://requests.walshit.com/api/v1/status"
+slow_seconds = 2.0
+timeout_seconds = 10.0
+follow_redirects = false
+
+[[checks]]
+component_id = "audiobooks"
+kind = "text-exact"
+url = "https://books.walshit.com/healthcheck"
+slow_seconds = 2.0
+timeout_seconds = 10.0
+follow_redirects = false
+
+[[checks]]
+component_id = "site"
+kind = "text-exact"
+url = "https://walshit.com/healthz.txt"
+slow_seconds = 2.0
+timeout_seconds = 10.0
+follow_redirects = false

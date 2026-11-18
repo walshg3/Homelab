@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f2ead9">
+  <title>Walshit.com / Status</title>
+  <link rel="preload" href="fonts/libre-baskerville-variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="favicon.ico?v=20261118" sizes="16x16 32x32 48x48">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20261118">
+  <link rel="stylesheet" href="status.css?v=20260926-history2">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to status</a>
+  <noscript>
+    <p class="noscript-message">Live status rendering requires JavaScript. No current health is claimed here. <a href="https://walshit.com/">Return to Walshit.com</a>.</p>
+  </noscript>
+
+  <header class="shell">
+    <a class="brand" href="https://walshit.com/" aria-label="Walshit home">
+      WAL<span class="slash">/</span>SHIT
+      <small>Service status<br>House report</small>
+    </a>
+    <button class="text-button nav-toggle" type="button" aria-expanded="false" aria-controls="status-navigation" aria-label="Open menu">
+      <span class="nav-toggle-icon" aria-hidden="true">
+        <span class="nav-toggle-line"></span>
+        <span class="nav-toggle-line"></span>
+        <span class="nav-toggle-line"></span>
+      </span>
+    </button>
+    <nav id="status-navigation" aria-label="Status navigation">
+      <a href="https://walshit.com/">Walshit.com</a>
+      <a href="#history">Incident history</a>
+      <a href="https://walshit.com/updates/">Updates</a>
+    </nav>
+  </header>
+
+  <main id="main" class="shell">
+    <div class="status-notices" id="status-notices" aria-live="assertive" aria-atomic="true">
+      <p class="status-notice notice-error" id="load-error" hidden>Status data is unavailable and current conditions cannot be verified.</p>
+      <p class="status-notice notice-stale" id="stale-warning" hidden>Status data is stale. Current conditions are unverified.</p>
+    </div>
+    <section class="mast" aria-labelledby="overall-title">
+      <div class="overall" role="status" aria-live="polite" aria-atomic="true">
+        <div class="overall-head">
+          <p class="eyebrow">House report · <span id="overall-state-label">Awaiting data</span></p>
+          <span class="status-dot" aria-hidden="true"></span>
+        </div>
+        <div>
+          <h1 class="overall-title" id="overall-title">Status data is being prepared.</h1>
+          <p class="overall-copy">Status data is loading. Current conditions are unverified until loading completes.</p>
+          <p class="generated-at" id="generated-at">Generation time unavailable.</p>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="components-title">
+      <div class="ledger-heading">
+        <div>
+          <p class="eyebrow">Public service ledger</p>
+          <h2 id="components-title">The five public doors.</h2>
+        </div>
+        <p>Measured availability and missing data are shown separately; missing periods are never filled with invented history.</p>
+      </div>
+
+      <div class="component-ledger">
+        <article class="component-row" data-component="watch">
+          <div class="component-name">
+            <h3>Watch</h3>
+            <p>Plex playback and sign-in</p>
+          </div>
+          <div class="history-placeholder" role="img" aria-label="History is not available yet for Watch.">
+            <span>History pending</span>
+          </div>
+          <div class="current-state"><span class="state-stamp">Awaiting data</span></div>
+        </article>
+        <article class="component-row" data-component="home">
+          <div class="component-name">
+            <h3>Home base</h3>
+            <p>Dashboard and links</p>
+          </div>
+          <div class="history-placeholder" role="img" aria-label="History is not available yet for Home base.">
+            <span>History pending</span>
+          </div>
+          <div class="current-state"><span class="state-stamp">Awaiting data</span></div>
+        </article>
+        <article class="component-row" data-component="requests">
+          <div class="component-name">
+            <h3>Requests</h3>
+            <p>Film and series requests</p>
+          </div>
+          <div class="history-placeholder" role="img" aria-label="History is not available yet for Requests.">
+            <span>History pending</span>
+          </div>
+          <div class="current-state"><span class="state-stamp">Awaiting data</span></div>
+        </article>
+        <article class="component-row" data-component="audiobooks">
+          <div class="component-name">
+            <h3>Audiobooks</h3>
+            <p>Listening and library access</p>
+          </div>
+          <div class="history-placeholder" role="img" aria-label="History is not available yet for Audiobooks.">
+            <span>History pending</span>
+          </div>
+          <div class="current-state"><span class="state-stamp">Awaiting data</span></div>
+        </article>
+        <article class="component-row" data-component="site">
+          <div class="component-name">
+            <h3>Walshit.com</h3>
+            <p>Updates and guides</p>
+          </div>
+          <div class="history-placeholder" role="img" aria-label="History is not available yet for Walshit.com.">
+            <span>History pending</span>
+          </div>
+          <div class="current-state"><span class="state-stamp">Awaiting data</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="active-section" aria-labelledby="active-title">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Now on the board</p>
+          <h2 id="active-title">Active events</h2>
+        </div>
+        <p class="eyebrow">Board pending</p>
+      </div>
+      <div id="active-board">
+      <article class="ticket-event" aria-labelledby="event-title">
+        <div class="event-stub">
+          <span class="eyebrow">Pending board</span>
+          <span class="event-code" aria-hidden="true">No. —</span>
+        </div>
+        <div class="event-main">
+          <p class="eyebrow">Board awaiting data</p>
+          <h3 id="event-title">No active-event data is available yet.</h3>
+          <p>Published incident and maintenance notices appear here when available.</p>
+        </div>
+      </article>
+      </div>
+    </section>
+
+    <section class="history-section" id="history" aria-labelledby="history-title">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Filed and closed</p>
+          <h2 id="history-title">Recent incident history</h2>
+        </div>
+        <p class="eyebrow">Archive loading</p>
+      </div>
+      <div class="history-list">
+        <article class="history-empty">
+          <p class="history-date" aria-hidden="true">—</p>
+          <div class="history-copy">
+            <h3>Loading incident archive.</h3>
+            <p>Filed incidents and completed maintenance are being checked. Availability history uses measured records only.</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="coverage" aria-labelledby="coverage-title">
+      <div>
+        <p class="eyebrow">What this covers</p>
+        <h2 id="coverage-title">Public availability, plainly stated.</h2>
+        <p>This report covers public availability and incidents for watching, signing in, opening the dashboard, making requests, listening, and reading public updates or guides.</p>
+      </div>
+      <div>
+        <p class="eyebrow">What stays private</p>
+        <h2>Everything behind the curtain.</h2>
+        <p>This page does not publish internal systems, personal activity, library contents, operator details, or recovery information.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="shell">
+    <p class="footer-mark">Walshit. Yes, really.</p>
+    <p>Service status · House report</p>
+  </footer>
+  <script src="navigation.js" defer></script>
+  <script src="status.js?v=20260926-history2" defer></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+# Fictional Maintenance template; replace every public-facing placeholder after copying.
+# Valid component vocabulary: "watch", "home", "requests", "audiobooks", "site".
+# Opening edit: keep the planned update, set its time, and omit resolved_at.
+# Update edit: append an in-progress entry when public work begins.
+# Closure edit: append completed and set resolved_at equal to the final update time.
+id = "maint-2026-01-02-public-example"
+kind = "maintenance"
+title = "Planned public service maintenance"
+body = "A brief period of reduced availability is expected for this public component."
+severity = "low"
+started_at = 2026-01-02T12:00:00Z
+affected_components = ["home"]
+resolved_at = 2026-01-02T12:30:00Z
+
+[[updates]]
+at = 2026-01-02T12:00:00Z
+phase = "planned"
+body = "Maintenance is scheduled for this public component."
+
+[[updates]]
+at = 2026-01-02T12:15:00Z
+phase = "in-progress"
+body = "Maintenance is underway and public checks continue."
+
+[[updates]]
+at = 2026-01-02T12:30:00Z
+phase = "completed"
+body = "Maintenance is complete and public checks are consistently completing."

@@ -1,0 +1,21 @@
+{
+  "schema_version": "2",
+  "generated_at": "2026-09-26T23:26:00Z",
+  "events": [
+    {
+      "id": "maint-2026-09-26-ups-battery",
+      "kind": "maintenance",
+      "status": "completed",
+      "title": "Planned maintenance: UPS battery replacement",
+      "body": "Synthetic fixture text: planned maintenance has completed.",
+      "started_at": "2026-09-26T22:40:33Z",
+      "updated_at": "2026-09-26T23:25:16Z",
+      "resolved_at": "2026-09-26T23:25:16Z",
+      "affected_components": ["watch", "home", "requests", "audiobooks", "site"],
+      "updates": [
+        {"at": "2026-09-26T22:40:33Z", "status": "in-progress", "body": "Synthetic fixture text: maintenance began."},
+        {"at": "2026-09-26T23:25:16Z", "status": "completed", "body": "Synthetic fixture text: maintenance completed."}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,695 @@
+from pathlib import Path
+import hashlib
+import re
+import struct
+import unittest
+
+from tests.leakcheck import assert_public_safe
+
+
+ROOT = Path(__file__).resolve().parents[1]
+WEB = ROOT / "web"
+
+
+class WebSourceTests(unittest.TestCase):
+    def setUp(self):
+        self.html = (WEB / "index.html").read_text(encoding="utf-8")
+        self.css = (WEB / "status.css").read_text(encoding="utf-8")
+
+    def test_approved_self_hosted_typography_assets_and_roles(self):
+        fonts = WEB / "fonts"
+        approved = {
+            "archivo-narrow-italic-variable.woff2",
+            "archivo-narrow-variable.woff2",
+            "libre-baskerville-italic-variable.woff2",
+            "libre-baskerville-variable.woff2",
+            "source-serif-4-italic-variable.woff2",
+            "source-serif-4-variable.woff2",
+            "licenses/archivo-narrow-OFL.txt",
+            "licenses/libre-baskerville-OFL.txt",
+            "licenses/source-serif-4-OFL.txt",
+        }
+        actual = {
+            path.relative_to(fonts).as_posix()
+            for path in fonts.rglob("*")
+            if path.is_file()
+        }
+        self.assertEqual(actual, approved)
+        for relative in sorted(path for path in approved if path.endswith(".woff2")):
+            with self.subTest(font=relative):
+                self.assertEqual((fonts / relative).read_bytes()[:4], b"wOF2")
+
+        self.assertEqual(self.css.count("@font-face"), 6)
+        self.assertEqual(self.css.count("font-display: swap"), 6)
+        self.assertIn('--display: "Libre Baskerville", Georgia, "Times New Roman", serif;', self.css)
+        self.assertIn('--serif: "Source Serif 4", Georgia, "Times New Roman", serif;', self.css)
+        self.assertIn('--sans: "Archivo Narrow", "Arial Narrow", "Aptos Narrow", sans-serif;', self.css)
+        self.assertIn("font-family: var(--display)", self.css)
+        overall_title = re.search(r"\.overall-title\s*\{([^}]*)\}", self.css, re.S)
+        if overall_title is None:
+            self.fail(".overall-title CSS rule must exist")
+        self.assertIn("max-width: 880px", overall_title.group(1))
+        self.assertIn("letter-spacing: -0.015em", overall_title.group(1))
+        self.assertIn("line-height: 0.96", overall_title.group(1))
+        self.assertNotIn("Fraunces", self.css)
+        self.assertNotIn("fraunces", "\n".join(sorted(actual)).lower())
+        self.assertIn(
+            '<link rel="preload" href="fonts/libre-baskerville-variable.woff2" as="font" type="font/woff2" crossorigin>',
+            self.html,
+        )
+
+    def test_status_runtime_uses_only_contract_endpoints_and_sixty_second_refresh(self):
+        path = WEB / "status.js"
+        self.assertTrue(path.is_file(), "web/status.js must exist")
+        source = path.read_text(encoding="utf-8")
+        self.assertEqual(
+            set(re.findall(r'["\'](/status/v2/[^"\']+)["\']', source)),
+            {"/status/v2/summary.json", "/status/v2/history.json", "/status/v2/incidents.json"},
+        )
+        self.assertIn("REFRESH_INTERVAL_MS = 60_000", source)
+        self.assertRegex(source, r"setInterval\s*\(\s*loadStatus\s*,\s*REFRESH_INTERVAL_MS\s*\)")
+        self.assertIn('document.addEventListener("DOMContentLoaded", start)', source)
+        self.assertIn("fetchJsonWithDeadline(windowObject, INCIDENTS_PATH)", source)
+
+    def test_status_refresh_is_uncached_bounded_race_safe_and_deduplicated(self):
+        source = (WEB / "status.js").read_text(encoding="utf-8")
+        self.assertIn("FETCH_TIMEOUT_MS = 10_000", source)
+        self.assertIn("new windowObject.AbortController()", source)
+        self.assertIn('cache: "no-store"', source)
+        self.assertIn("signal: controller.signal", source)
+        self.assertIn("fetchJsonWithDeadline(windowObject, SUMMARY_PATH)", source)
+        self.assertIn("fetchJsonWithDeadline(windowObject, HISTORY_PATH)", source)
+        self.assertIn("Promise.race", source)
+        self.assertIn("response.json()", source)
+        self.assertIn("const generation = ++requestGeneration", source)
+        self.assertGreaterEqual(source.count("generation !== requestGeneration"), 2)
+        self.assertRegex(source, r"finally\s*\{\s*windowObject\.clearTimeout\(timeoutId\)")
+        self.assertIn("lastSuccessfulFingerprint = null", source)
+        self.assertIn("fingerprintViewModel(model)", source)
+        self.assertIn("fingerprint !== lastSuccessfulFingerprint", source)
+        self.assertIn("fingerprint !== lastArchiveFingerprint", source)
+
+    def test_no_inline_script_or_style(self):
+        scripts = re.findall(r'<script\s+([^>]*)></script>', self.html)
+        self.assertEqual(
+            scripts,
+            ['src="navigation.js" defer', 'src="status.js?v=20260926-history2" defer'],
+        )
+        self.assertNotRegex(self.html, r"(?i)<style\b")
+        self.assertNotRegex(self.html, r"(?i)\sstyle\s*=")
+        self.assertNotRegex(self.html, r"(?i)\son[a-z]+\s*=")
+
+    def test_favicon_is_the_canonical_walshit_crest(self):
+        favicon = WEB / "walsh-ticket-crest.png"
+        self.assertTrue(favicon.is_file(), "canonical Walshit crest must be bundled")
+        data = favicon.read_bytes()
+        self.assertEqual(
+            hashlib.sha256(data).hexdigest(),
+            "c0b5d6d4323cb804aca3803f758c5cc8aab79f110fba3839d62c1e93a365bd56",
+        )
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(struct.unpack(">II", data[16:24]), (768, 768))
+        self.assertNotIn("walsh-ticket-crest.png", self.html)
+
+    def test_small_favicon_is_a_lightweight_multi_size_ico(self):
+        ico = WEB / "favicon.ico"
+        self.assertTrue(ico.is_file(), "browser-default favicon.ico must be bundled")
+        data = ico.read_bytes()
+        self.assertLess(len(data), 32768, "tab favicon must stay small")
+        reserved, kind, count = struct.unpack("<HHH", data[:6])
+        self.assertEqual((reserved, kind), (0, 1))
+        sizes = set()
+        for index in range(count):
+            width, height = struct.unpack("<BB", data[6 + 16 * index:8 + 16 * index])
+            sizes.add((width or 256, height or 256))
+        self.assertTrue({(16, 16), (32, 32), (48, 48)} <= sizes)
+        self.assertIn(
+            '<link rel="icon" href="favicon.ico?v=20261118" sizes="16x16 32x32 48x48">',
+            self.html,
+        )
+
+    def test_apple_touch_icon_is_opaque_180_png(self):
+        icon = WEB / "apple-touch-icon.png"
+        self.assertTrue(icon.is_file(), "iOS home-screen icon must be bundled")
+        data = icon.read_bytes()
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(struct.unpack(">II", data[16:24]), (180, 180))
+        self.assertEqual(data[25], 2, "apple-touch-icon must be opaque RGB")
+        self.assertLess(len(data), 65536)
+        self.assertIn(
+            '<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20261118">',
+            self.html,
+        )
+
+    def test_shared_header_identity_and_dom_order(self):
+        header = re.search(r'<header class="shell">(.*?)</header>', self.html, re.S)
+        self.assertIsNotNone(header)
+        markup = header.group(1)
+        brand = re.search(r'<a class="brand"([^>]*)>(.*?)</a>', markup, re.S)
+        self.assertIsNotNone(brand)
+        self.assertIn('href="https://walshit.com/"', brand.group(1))
+        self.assertIn('aria-label="Walshit home"', brand.group(1))
+        self.assertRegex(
+            brand.group(2),
+            r'^\s*WAL<span class="slash">/</span>SHIT\s*'
+            r'<small>Service status<br>House report</small>\s*$',
+        )
+        direct_children = re.findall(
+            r'^\s*<(a|button|nav)\b[^>]*(?:class="([^"]*)"|id="([^"]*)")',
+            markup,
+            re.M,
+        )
+        self.assertEqual(
+            direct_children,
+            [
+                ("a", "brand", ""),
+                ("button", "text-button nav-toggle", ""),
+                ("nav", "", "status-navigation"),
+            ],
+        )
+        toggle = re.search(r'<button class="text-button nav-toggle"([^>]*)>', markup)
+        self.assertIsNotNone(toggle)
+        for attribute in (
+            'type="button"',
+            'aria-expanded="false"',
+            'aria-controls="status-navigation"',
+            'aria-label="Open menu"',
+        ):
+            with self.subTest(attribute=attribute):
+                self.assertIn(attribute, toggle.group(1))
+        self.assertEqual(markup.count('class="nav-toggle-line"'), 3)
+        navigation = re.search(
+            r'<nav id="status-navigation" aria-label="Status navigation">(.*?)</nav>',
+            markup,
+            re.S,
+        )
+        self.assertIsNotNone(navigation)
+        links = re.findall(r'<a href="([^"]+)">([^<]+)</a>', navigation.group(1))
+        self.assertEqual(
+            links,
+            [
+                ("https://walshit.com/", "Walshit.com"),
+                ("#history", "Incident history"),
+                ("https://walshit.com/updates/", "Updates"),
+            ],
+        )
+        forbidden = ("brand-mark", "brand-name", "brand-slash")
+        for token in forbidden:
+            with self.subTest(token=token):
+                self.assertNotIn(token, f"{self.html}\n{self.css}")
+
+    def test_navigation_disclosure_behavior_is_local_and_complete(self):
+        path = WEB / "navigation.js"
+        self.assertTrue(path.is_file(), "web/navigation.js must exist")
+        source = path.read_text(encoding="utf-8")
+        self.assertIn('window.matchMedia("(max-width: 1024px)")', source)
+        self.assertRegex(source, r'\.hidden\s*=\s*compactNavigation\.matches\s*&&\s*!expanded')
+        self.assertIn('setAttribute("aria-expanded", String(expanded))', source)
+        self.assertIn('expanded ? "Close menu" : "Open menu"', source)
+        self.assertRegex(source, r'navToggle\.addEventListener\("click"')
+        self.assertRegex(source, r'statusNavigation\.addEventListener\("click"')
+        self.assertIn('event.target.closest("a")', source)
+        self.assertIn('!header.contains(event.target)', source)
+        self.assertIn('event.key === "Escape"', source)
+        self.assertIn('setNavigationOpen(false, true)', source)
+        self.assertIn('if (returnFocus) navToggle.focus()', source)
+        self.assertIn('compactNavigation.addEventListener("change", syncNavigation)', source)
+        self.assertRegex(source, r'syncNavigation\(\);\s*$')
+        self.assertNotRegex(
+            source,
+            r"(?i)fetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|"
+            r"\.innerHTML\b|showModal\s*\(|\.submit\s*\(",
+        )
+        assert_public_safe(source, source="web/navigation.js")
+
+    def test_no_demo_or_inert_interface(self):
+        forbidden = (
+            "concept",
+            "scenario",
+            "synthetic",
+            "demo",
+            "mockup",
+            "subscribe",
+            "toast",
+            "dialog",
+            "inert-link",
+            "radio",
+        )
+        source = f"{self.html}\n{self.css}".lower()
+        for term in forbidden:
+            with self.subTest(term=term):
+                self.assertNotIn(term, source)
+
+    def test_component_registry_names_and_placeholders_present(self):
+        expected = {
+            "watch": "Watch",
+            "home": "Home base",
+            "requests": "Requests",
+            "audiobooks": "Audiobooks",
+            "site": "Walshit.com",
+        }
+        ids = re.findall(r'data-component="([a-z]+)"', self.html)
+        self.assertEqual(ids, list(expected))
+        for name in expected.values():
+            with self.subTest(name=name):
+                self.assertIn(f"<h3>{name}</h3>", self.html)
+        self.assertEqual(self.html.count("History pending"), 5)
+        stamps = re.findall(r'<span class="state-stamp">([^<]+)</span>', self.html)
+        self.assertEqual(stamps, ["Awaiting data"] * 5)
+
+    def test_assets_are_local_and_page_has_no_runtime_surface(self):
+        self.assertNotRegex(self.css, r"(?i)@import|url\s*\(\s*['\"]?https?://")
+        self.assertEqual(self.css.count('url("data:image/svg+xml,'), 1)
+        self.assertNotRegex(self.html, r"(?i)<(?:img|picture|source|iframe|object|embed)\b")
+        self.assertNotRegex(self.html, r"(?i)<form\b|<input\b|<select\b|<textarea\b")
+        self.assertRegex(
+            self.html,
+            r'<link\s+rel="stylesheet"\s+href="status\.css\?v=20260926-history2">',
+        )
+        links = re.findall(r'(?:href|src)="([^"]+)"', self.html)
+        self.assertEqual(
+            set(links),
+            {
+                "#main",
+                "#history",
+                "fonts/libre-baskerville-variable.woff2",
+                "favicon.ico?v=20261118",
+                "apple-touch-icon.png?v=20261118",
+                "status.css?v=20260926-history2",
+                "navigation.js",
+                "status.js?v=20260926-history2",
+                "https://walshit.com/",
+                "https://walshit.com/updates/",
+            },
+        )
+        runtime_assets = re.findall(
+            r'<(?:script|link)[^>]+(?:src|href)="([^"]+)"', self.html
+        )
+        self.assertEqual(
+            runtime_assets,
+            [
+                "fonts/libre-baskerville-variable.woff2",
+                "favicon.ico?v=20261118",
+                "apple-touch-icon.png?v=20261118",
+                "status.css?v=20260926-history2",
+                "navigation.js",
+                "status.js?v=20260926-history2",
+            ],
+        )
+        external_anchors = re.findall(r'<a[^>]+href="(https://[^"]+)"', self.html)
+        self.assertEqual(
+            external_anchors,
+            [
+                "https://walshit.com/",
+                "https://walshit.com/",
+                "https://walshit.com/",
+                "https://walshit.com/updates/",
+            ],
+        )
+
+    def test_runtime_shell_has_honest_notices_archive_boundary_and_noscript_fallback(self):
+        required = (
+            'id="status-notices"',
+            'id="load-error"',
+            'id="stale-warning"',
+            'id="overall-state-label"',
+            'id="generated-at"',
+            'id="active-board"',
+            "Filed incidents and completed maintenance are being checked.",
+            "Live status rendering requires JavaScript.",
+            '<noscript>',
+            '<a href="https://walshit.com/">Return to Walshit.com</a>',
+        )
+        for item in required:
+            with self.subTest(item=item):
+                self.assertIn(item, self.html)
+
+    def test_status_runtime_builds_untrusted_content_with_safe_dom_methods_only(self):
+        source = (WEB / "status.js").read_text(encoding="utf-8")
+        self.assertIn("document.createElement", source)
+        self.assertIn(".textContent", source)
+        self.assertIn("setAttribute", source)
+        self.assertNotRegex(
+            source,
+            r"(?i)\.innerHTML\b|insertAdjacentHTML|document\.write|outerHTML|DOMParser|"
+            r"eval\s*\(|new\s+Function",
+        )
+        assert_public_safe(source, source="web/status.js")
+
+    def test_runtime_uses_measured_availability_copy_without_uptime_claims(self):
+        source = (WEB / "status.js").read_text(encoding="utf-8")
+        self.assertIn("% measured availability", source)
+        self.assertIn("measured availability unavailable", source)
+        self.assertNotIn("% uptime", source.lower())
+
+    def test_load_failures_are_generic_and_fail_closed(self):
+        source = (WEB / "status.js").read_text(encoding="utf-8")
+        self.assertIn("requireCondition(response.ok)", source)
+        self.assertIn("response.json()", source)
+        self.assertRegex(
+            source,
+            r"(?s)catch\s*\(_error\)\s*\{.*generation !== requestGeneration.*"
+            r"lastSuccessfulFingerprint = null;\s*renderUnavailable\(document\)",
+        )
+        self.assertNotRegex(source, r"console\.|\.stack\b|response\.text\s*\(")
+        self.assertIn(
+            "Status data is unavailable and current conditions cannot be verified.",
+            source,
+        )
+
+    def test_canonical_theme_color_and_house_report_boundary(self):
+        self.assertRegex(
+            self.html,
+            r'<meta\s+name="theme-color"\s+content="#f2ead9">',
+        )
+        required = (
+            'class="overall" role="status" aria-live="polite"',
+            "Status data is being prepared.",
+            'class="component-ledger"',
+            'class="ticket-event"',
+            'class="history-section" id="history"',
+            'class="coverage"',
+            "No active-event data is available yet.",
+            "Current conditions are unverified until loading completes.",
+            "Measured availability and missing data are shown separately",
+            "missing periods are never filled with invented history",
+            "This report covers public availability and incidents",
+        )
+        for item in required:
+            with self.subTest(item=item):
+                self.assertIn(item, self.html)
+
+    def test_document_landmarks_and_accessible_status_message(self):
+        self.assertIn("<title>Walshit.com / Status</title>", self.html)
+        self.assertRegex(
+            self.html,
+            r'<meta\s+name="viewport"\s+content="width=device-width, initial-scale=1">',
+        )
+        self.assertEqual(len(re.findall(r"(?i)<h1\b", self.html)), 1)
+        for landmark in ("header", "main", "footer"):
+            with self.subTest(landmark=landmark):
+                self.assertEqual(len(re.findall(fr"(?i)<{landmark}\b", self.html)), 1)
+        self.assertIn('href="#main"', self.html)
+        self.assertRegex(self.html, r'<main\s+id="main"[^>]*>')
+        self.assertRegex(self.html, r'role="status"[^>]*aria-live="polite"')
+        self.assertIn("Status data is being prepared.", self.html)
+        self.assertIn('aria-label="Walshit home"', self.html)
+
+    def test_event_and_history_shells_use_honest_non_live_language(self):
+        self.assertIn('class="active-section"', self.html)
+        self.assertIn('class="ticket-event"', self.html)
+        self.assertIn('class="history-section"', self.html)
+        self.assertIn('id="history"', self.html)
+        self.assertIn("No active-event data is available yet.", self.html)
+        self.assertIn("Loading incident archive.", self.html)
+        self.assertIn("Availability history uses measured records only.", self.html)
+        self.assertNotIn("History will appear after monitoring begins.", self.html)
+        self.assertNotRegex(self.html, r"\b\d{2,3}\.\d{1,2}%|90 days ago")
+
+    def test_static_copy_remains_truthful_across_initial_success_and_failure_states(self):
+        contradictory = (
+            "No current condition is asserted here.",
+            "No past availability or incident record is claimed",
+            "Future reports cover",
+            "This source shell is not connected to monitoring yet.",
+            "Publishing has not begun",
+            "after the status publisher is connected",
+        )
+        for statement in contradictory:
+            with self.subTest(statement=statement):
+                self.assertNotIn(statement, self.html)
+
+    def test_staging_acceptance_docs_state_completed_scope_and_unchanged_boundaries(self):
+        for relative_path in ("README.md", "runbooks/operations.md"):
+            document = (ROOT / relative_path).read_text(encoding="utf-8")
+            compact = re.sub(r"\s+", " ", document)
+            with self.subTest(path=relative_path):
+                self.assertIn(
+                    "isolated, loopback-only staging acceptance was completed on 2026-07-22",
+                    compact,
+                )
+                self.assertIn(
+                    "No push, public deployment, DNS, Cloudflare, tunnel, or production cutover occurred.",
+                    compact,
+                )
+
+    def test_house_report_content_css_remains_present(self):
+        self.assertIn(".component-ledger", self.css)
+        self.assertIn(".ticket-event", self.css)
+        self.assertIn(".overall", self.css)
+        self.assertIn(".history-list", self.css)
+        self.assertIn(".coverage", self.css)
+
+    def test_renderer_treatments_use_existing_contract_tokens(self):
+        required_selectors = (
+            ".status-notice",
+            ".notice-error",
+            ".notice-stale",
+            ".overall.state-operational",
+            ".overall.state-outage",
+            ".overall.state-maintenance",
+            ".state-stamp.state-no-data",
+            ".history-strip",
+            ".history-mark.state-no-data",
+            ".event-timeline",
+        )
+        for selector in required_selectors:
+            with self.subTest(selector=selector):
+                self.assertIn(selector, self.css)
+        compact = re.sub(r"\s+", " ", self.css.lower())
+        self.assertIn("background: var(--green)", compact)
+        self.assertIn("background: var(--red)", compact)
+        self.assertIn("background: var(--yellow)", compact)
+        self.assertLessEqual(
+            set(re.findall(r"#[0-9a-fA-F]{3,8}", self.css)),
+            {"#f2ead9", "#e5d8bd", "#171713", "#c93424", "#f1bd38", "#39754d", "#ffffff"},
+        )
+        self.assertIn(".history-placeholder > span", self.css)
+        self.assertNotIn(".history-placeholder span", self.css)
+
+    def test_mast_uses_contract_hard_shadow_magnitudes(self):
+        mast_rule = re.search(r"\.mast\s*\{([^}]*)\}", self.css, re.S)
+        if mast_rule is None:
+            self.fail(".mast CSS rule must exist")
+        self.assertIn("box-shadow: 10px 10px 0 var(--ink)", mast_rule.group(1))
+        compact = re.sub(r"\s+", " ", self.css.lower())
+        mobile = compact[compact.index("@media (max-width: 460px)"):]
+        self.assertIn(".mast { margin-top: 22px; box-shadow: 7px 7px 0 var(--ink); }", mobile)
+
+    def test_incident_tickets_use_red_hard_shadows_at_desktop_and_mobile_sizes(self):
+        compact = re.sub(r"\s+", " ", self.css.lower())
+        self.assertIn(
+            ".ticket-event { position: relative; display: grid; grid-template-columns: "
+            "180px minmax(0, 1fr); border: 2px solid var(--ink); background: var(--paper); "
+            "box-shadow: 10px 10px 0 var(--ink); }",
+            compact,
+        )
+        self.assertIn(
+            ".ticket-event.kind-incident { box-shadow: 10px 10px 0 var(--red); }",
+            compact,
+        )
+        mobile = compact[compact.index("@media (max-width: 460px)"):]
+        self.assertIn(".ticket-event { box-shadow: 7px 7px 0 var(--ink); }", mobile)
+        self.assertIn(
+            ".ticket-event.kind-incident { box-shadow: 7px 7px 0 var(--red); }",
+            mobile,
+        )
+        self.assertNotIn(".ticket-event.kind-maintenance { box-shadow:", compact)
+        self.assertNotIn(".ticket-event.event-quiet { box-shadow:", compact)
+
+    def test_dynamic_public_copy_wraps_without_changing_brand_or_navigation_labels(self):
+        wrapping_rule = re.search(
+            r"\.overall-title,\s*\.overall-copy,\s*\.component-name,\s*"
+            r"\.event-code,\s*\.event-main,\s*\.event-title,\s*\.event-body,\s*"
+            r"\.event-meta-value,\s*\.event-update-body\s*\{([^}]*)\}",
+            self.css,
+            re.S,
+        )
+        self.assertIsNotNone(wrapping_rule)
+        self.assertIn("min-width: 0", wrapping_rule.group(1))
+        self.assertIn("overflow-wrap: anywhere", wrapping_rule.group(1))
+        for selector in (".brand", "nav a", ".text-button"):
+            with self.subTest(selector=selector):
+                rule = re.search(rf"{re.escape(selector)}\s*\{{([^}}]*)\}}", self.css, re.S)
+                self.assertIsNotNone(rule)
+                self.assertNotIn("overflow-wrap", rule.group(1))
+
+    def test_history_meta_resets_placeholder_nowrap_and_can_shrink_within_strip(self):
+        history_meta_rule = re.search(
+            r"\.history-placeholder\s*>\s*\.history-meta\s*\{([^}]*)\}",
+            self.css,
+            re.S,
+        )
+        self.assertIsNotNone(
+            history_meta_rule,
+            ".history-placeholder > .history-meta CSS rule must exist",
+        )
+        declarations = history_meta_rule.group(1)
+        for declaration in (
+            "position: static",
+            "transform: none",
+            "min-width: 0",
+            "max-width: 100%",
+            "white-space: normal",
+            "overflow-wrap: anywhere",
+        ):
+            with self.subTest(declaration=declaration):
+                self.assertIn(declaration, declarations)
+
+    def test_archive_metadata_does_not_change_availability_label_layout_or_focus(self):
+        for selector in re.findall(r"([^{}]+)\{[^{}]*\}", self.css):
+            if ".history-meta" in selector and ".history-placeholder > .history-meta" not in selector:
+                for part in selector.split(","):
+                    if ".history-meta" in part:
+                        self.assertIn(".history-card ", part)
+        self.assertNotRegex(self.css, r"\.history-timeline\s+summary:focus-visible")
+        self.assertIn("outline: 3px solid var(--yellow)", self.css)
+
+    def test_operations_describes_archive_fallback_freshness_and_cache_version(self):
+        operations = (ROOT / "runbooks" / "operations.md").read_text(encoding="utf-8")
+        for text in ("/status/v2/incidents.json", "independent", "180 seconds", "history2", "test_incident_frontend", "render_check.py"):
+            with self.subTest(text=text):
+                self.assertIn(text, operations)
+
+    def test_history_strip_resets_placeholder_positioning_in_normal_flow(self):
+        history_strip_rule = re.search(
+            r"\.history-placeholder\s*>\s*\.history-strip\s*\{([^}]*)\}",
+            self.css,
+            re.S,
+        )
+        self.assertIsNotNone(
+            history_strip_rule,
+            ".history-placeholder > .history-strip CSS rule must exist",
+        )
+        declarations = history_strip_rule.group(1)
+        for declaration in ("position: static", "transform: none"):
+            with self.subTest(declaration=declaration):
+                self.assertIn(declaration, declarations)
+
+    def test_overall_field_stays_yellow_while_state_dot_carries_state_color(self):
+        compact = re.sub(r"\s+", " ", self.css.lower())
+        overall_rule = re.search(r"\.overall\s*\{([^}]*)\}", self.css, re.S)
+        if overall_rule is None:
+            self.fail(".overall CSS rule must exist")
+        self.assertIn("background: var(--yellow)", overall_rule.group(1))
+        dot_colors = {
+            "operational": "var(--green)",
+            "degraded": "var(--yellow)",
+            "outage": "var(--red)",
+            "maintenance": "var(--paper-2)",
+            "no-data": "var(--paper)",
+        }
+        for state, color in dot_colors.items():
+            with self.subTest(state=state):
+                state_rule = re.search(
+                    rf"\.overall\.state-{state}\s*\{{([^}}]*)\}}",
+                    self.css,
+                    re.S,
+                )
+                if state_rule is not None:
+                    self.assertNotIn("background:", state_rule.group(1))
+                self.assertIn(
+                    f".overall.state-{state} .status-dot {{ background: {color}; }}",
+                    compact,
+                )
+
+    def test_canonical_shared_chrome(self):
+        compact = re.sub(r"\s+", " ", self.css.lower())
+        variables = {
+            "--paper": "#f2ead9",
+            "--paper-2": "#e5d8bd",
+            "--ink": "#171713",
+            "--red": "#c93424",
+            "--yellow": "#f1bd38",
+            "--green": "#39754d",
+            "--white": "#ffffff",
+            "--rule": "rgba(23, 23, 19, 0.28)",
+            "--max": "1280px",
+        }
+        for name, value in variables.items():
+            with self.subTest(variable=name):
+                self.assertIn(f"{name}: {value}", compact)
+        for retired in ("#f3ead7", "#e2d3b5", "#faf6ed", "#fffdf7", "1180px"):
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, compact)
+        self.assertIn("font-size: 16px", compact)
+        self.assertIn("line-height: 1.45", compact)
+        self.assertIn(
+            "radial-gradient(circle at 12% 8%, rgba(255, 255, 255, 0.45), transparent 22rem)",
+            compact,
+        )
+        self.assertIn("body::before", compact)
+        self.assertIn("position: fixed", compact)
+        self.assertIn("opacity: 0.055", compact)
+        self.assertIn("fractalnoise", compact)
+        self.assertNotIn("body::after", compact)
+        self.assertNotIn("repeating-linear-gradient(0deg", compact)
+        self.assertNotIn("mix-blend-mode", compact)
+        self.assertIn("width: min(calc(100% - 48px), var(--max))", compact)
+        self.assertIn("min-height: 90px", compact)
+        self.assertIn("border-bottom: 1px solid var(--ink)", compact)
+        self.assertNotIn("min-height: 104px", compact)
+        self.assertIn("outline: 3px solid var(--yellow)", compact)
+        self.assertIn("outline-offset: 4px", compact)
+        self.assertIn("font-size: clamp(1.55rem, 3vw, 2.15rem)", compact)
+        self.assertIn("letter-spacing: -0.07em", compact)
+        brand_rule = re.search(r"\.brand\s*\{([^}]*)\}", self.css, re.S)
+        if brand_rule is None:
+            self.fail(".brand CSS rule must exist")
+        self.assertIn("min-height: 44px", brand_rule.group(1))
+        self.assertIn(".brand .slash", compact)
+        self.assertIn(".brand small", compact)
+        self.assertIn("max-width: 9rem", compact)
+        self.assertIn("min-height: 160px", compact)
+        self.assertIn("font-size: 2rem", compact)
+        self.assertIn('<p class="footer-mark">Walshit. Yes, really.</p>', self.html)
+        self.assertIn("<p>Service status · House report</p>", self.html)
+        footer_rule = re.search(r"footer\s*\{([^}]*)\}", self.css, re.S)
+        self.assertIsNotNone(footer_rule)
+        self.assertNotIn("border-top", footer_rule.group(1))
+
+    def test_canonical_responsive_navigation_and_breakpoints(self):
+        compact = re.sub(r"\s+", " ", self.css.lower())
+        breakpoints = re.findall(r"@media\s*\(max-width:\s*(\d+)px\)", self.css)
+        self.assertEqual(breakpoints, ["1024", "820", "460"])
+        required = (
+            "header { flex-wrap: wrap; align-content: center; padding-block: 16px; }",
+            ".nav-toggle { display: inline-flex; margin-left: auto; }",
+            "nav[hidden] { display: none; }",
+            "flex: 0 0 100%",
+            "min-height: 48px",
+            "border-top: 1px dashed var(--rule)",
+            "width: min(calc(100% - 32px), var(--max))",
+            "header { min-height: 76px; }",
+            ".brand small { display: none; }",
+            "footer { align-items: flex-start; flex-direction: column;",
+            "html { scroll-behavior: auto; }",
+            "transition-duration: 0.01ms !important",
+            ".nav-toggle-line { transition: none !important; }",
+        )
+        for declaration in required:
+            with self.subTest(declaration=declaration):
+                self.assertIn(declaration, compact)
+        self.assertNotIn(".utility-nav", compact)
+        at_820 = compact.index("@media (max-width: 820px)")
+        at_460 = compact.index("@media (max-width: 460px)")
+        self.assertNotRegex(compact[at_820:at_460], r"footer \{[^}]*flex-direction")
+        self.assertEqual(compact.count(".brand small { display: none; }"), 1)
+
+    def test_static_web_source_is_public_safe(self):
+        assert_public_safe(self.html, source="web/index.html")
+        assert_public_safe(self.css, source="web/status.css")
+        navigation = (WEB / "navigation.js").read_text(encoding="utf-8")
+        assert_public_safe(navigation, source="web/navigation.js")
+        status = (WEB / "status.js").read_text(encoding="utf-8")
+        assert_public_safe(status, source="web/status.js")
+
+
+class HealthMarkerTests(unittest.TestCase):
+    def test_healthz_content(self):
+        health = (WEB / "healthz.txt").read_bytes()
+        self.assertEqual(health, b"status-walshit-web-ok\n")
+
+
+if __name__ == "__main__":
+    unittest.main()

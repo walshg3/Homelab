@@ -1,0 +1,7 @@
+{
+  "name": "Status soak one-shot report",
+  "schedule": "at <reviewed-utc-timestamp>",
+  "script": "report_status_soak_watchdog.py",
+  "no_agent": true,
+  "deliver": "announce"
+}

@@ -1,0 +1,61 @@
+{
+  "schema_version": "2",
+  "generated_at": "2026-07-19T15:00:00Z",
+  "components": [
+    {
+      "id": "watch",
+      "name": "Watch",
+      "days": [
+        {"date": "2026-07-15", "state": "no-data"},
+        {"date": "2026-07-16", "state": "no-data"},
+        {"date": "2026-07-17", "state": "operational"},
+        {"date": "2026-07-18", "state": "operational"},
+        {"date": "2026-07-19", "state": "outage"}
+      ]
+    },
+    {
+      "id": "home",
+      "name": "Home base",
+      "days": [
+        {"date": "2026-07-15", "state": "no-data"},
+        {"date": "2026-07-16", "state": "no-data"},
+        {"date": "2026-07-17", "state": "operational"},
+        {"date": "2026-07-18", "state": "operational"},
+        {"date": "2026-07-19", "state": "maintenance"}
+      ]
+    },
+    {
+      "id": "requests",
+      "name": "Requests",
+      "days": [
+        {"date": "2026-07-15", "state": "no-data"},
+        {"date": "2026-07-16", "state": "no-data"},
+        {"date": "2026-07-17", "state": "operational"},
+        {"date": "2026-07-18", "state": "degraded"},
+        {"date": "2026-07-19", "state": "maintenance"}
+      ]
+    },
+    {
+      "id": "audiobooks",
+      "name": "Audiobooks",
+      "days": [
+        {"date": "2026-07-15", "state": "no-data"},
+        {"date": "2026-07-16", "state": "no-data"},
+        {"date": "2026-07-17", "state": "operational"},
+        {"date": "2026-07-18", "state": "operational"},
+        {"date": "2026-07-19", "state": "operational"}
+      ]
+    },
+    {
+      "id": "site",
+      "name": "Walshit.com",
+      "days": [
+        {"date": "2026-07-15", "state": "no-data"},
+        {"date": "2026-07-16", "state": "no-data"},
+        {"date": "2026-07-17", "state": "operational"},
+        {"date": "2026-07-18", "state": "operational"},
+        {"date": "2026-07-19", "state": "operational"}
+      ]
+    }
+  ]
+}
